@@ -268,6 +268,12 @@ class CXTsim(DetCDE,StoCDE):
         else:
             self.mm = 100
         
+        # Maximum number of integration points for Gauss Chebychev
+        if "mmax" in kwargs:
+            self.mmax = kwargs["mmax"]
+        else:
+            self.mmax = 6400
+        
         # Integration mode for Gauss Chebychev
         if "icheb" in kwargs:
             self.icheb = kwargs["icheb"]
