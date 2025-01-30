@@ -1,13 +1,11 @@
 import numpy as np
-from .detcde import DetCDE
+from .detcde import DetCDE,dbexp
+from scipy.integrate import quad
 
 # Converted from functions in STOCDE.FOR original Fortran code
 class StoCDE(DetCDE):
     def StoCDE(self):
-        if self.mode % 2 == 1:
-            mods = 1 # MODES 1, 3, 5, Equilibrium
-        else:
-            mods = 2 # MODES 2, 4, 6, 8 Non-equilibrium
+        mods = self.mode % 2
 
         # MCON=0 CALUCULATE PHASE1 & PHASE2 FOR TOTAL RESIDENT CONC.
         # MCON=1            PHASE1 ONLY
@@ -28,15 +26,15 @@ class StoCDE(DetCDE):
                     self.msd = 1
                     c12 = self.chebylog2(self.conprov, self.vmin, self.vmax)
             else:
-                c1 = self.romb(self.conprov, self.vmin, self.vmax)
+                c1 , _ = quad(self.conprov, self.vmin, self.vmax)
                 if self.inverse == 0:
                     self.msd = 1
-                    c12 = self.romb(self.conprov, self.vmin, self.vmax)
+                    c12, _ = quad(self.conprov, self.vmin, self.vmax)
 
             if self.modc in [4, 6]:
                 return c1, 0.0, c12-c1*c1, 0.0
 
-            if mods == 2:
+            if mods == 0:
                 self.mcon = 2
                 if self.intm == 2:
                     c2 = self.chebylog2(self.conprov, self.vmin, self.vmax)
@@ -47,7 +45,7 @@ class StoCDE(DetCDE):
                     c2 = self.romb(self.conprov, self.vmin, self.vmax)
                     if self.inverse == 0:
                         self.msd = 1
-                        c22 = self.romb(self.conprov, self.vmin, self.vmax)
+                        c22 , _ = quad(self.conprov, self.vmin, self.vmax)
 
         if self.mstoch in [2, 4]:
             if self.intm == 2:
@@ -64,7 +62,7 @@ class StoCDE(DetCDE):
             if self.modc in [4, 6]:
                 return c1, c2, c12-c1*c1, c22-c2*c2
 
-            if mods == 2:
+            if mods == 0:
                 self.mcon = 2
                 if self.intm == 2:
                     c2 = self.chebylog2(self.conproy, self.ymin, self.ymax)
@@ -93,16 +91,14 @@ class StoCDE(DetCDE):
         somega = self.omega
         sdmu1 = self.dmu1
         sdmu2 = self.dmu2
-        spulse = self.pulse[0]['conc']
+        spulse = self.cpulse[0]
 
-        stpulse = [p['time'] for p in self.pulse]
-        sgamma1 = [p['gamma'] for p in self.prodval1]
-        sgamma2 = [p['gamma'] for p in self.prodval2]
+        stpulse = self.tpulse
+        sgamma1 = self.gamma1
+        sgamma2 = self.gamma2
 
         if abs(v) < 1.0e-30:
             v = self.v * 1.0e-30
-
-        ttt = self.tt / self.v * v
 
         if self.mode in [5, 6]:
             m56 = 1
@@ -113,10 +109,10 @@ class StoCDE(DetCDE):
         if (m56 == 1 and self.mstoch != 3) or (m56 == 0 and self.modd == 0):
             self.p = self.p / self.v * v
         elif (m56 == 1 and self.mcorr == 1) or (m56 == 0 and self.modd >= 1):
-            self.d = (v / self.v) ** (self.sdln_d / self.sdlnv) * sd * self.np.exp(0.5 * (self.sdlnv - self.sdln_d) * self.sdln_d)
+            self.d = (v / self.v) ** (self.sdln_d / self.sdlnv) * sd * dbexp(0.5 * (self.sdlnv - self.sdln_d) * self.sdln_d)
             self.p = self.p / self.v * v * sd / self.d
         elif (m56 == 1 and self.mcorr == -1) or (m56 == 0 and self.modd <= -1):
-            self.d = (v / self.v) ** (-self.sdln_d / self.sdlnv) * sd * self.np.exp(0.5 * (-self.sdlnv - self.sdln_d) * self.sdln_d)
+            self.d = (v / self.v) ** (-self.sdln_d / self.sdlnv) * sd * dbexp(0.5 * (-self.sdlnv - self.sdln_d) * self.sdln_d)
             self.p = self.p / self.v * v * sd / self.d
 
         if self.mode in [3, 4]:
@@ -126,10 +122,10 @@ class StoCDE(DetCDE):
             m34 = 0
 
         if (m34 == 1 and self.mcorr == 1) or (m34 == 0 and self.modk >= 1):
-            self.dk = (v / self.v) ** (self.sdlnk / self.sdlnv) * sdk * self.np.exp(0.5 * (self.sdlnv - self.sdlnk) * self.sdlnk)
+            self.dk = (v / self.v) ** (self.sdlnk / self.sdlnv) * sdk * dbexp(0.5 * (self.sdlnv - self.sdlnk) * self.sdlnk)
             self.r = 1.0 + self.rhoth * self.dk
         elif (m34 == 1 and self.mcorr == -1) or (m34 == 0 and self.modk <= -1):
-            self.dk = (v / self.v) ** (-self.sdlnk / self.sdlnv) * sdk * self.np.exp(0.5 * (-self.sdlnv - self.sdlnk) * self.sdlnk)
+            self.dk = (v / self.v) ** (-self.sdlnk / self.sdlnv) * sdk * dbexp(0.5 * (-self.sdlnv - self.sdlnk) * self.sdlnk)
             self.r = 1.0 + self.rhoth * self.dk
 
         if self.mneq == 1:
@@ -142,26 +138,28 @@ class StoCDE(DetCDE):
 
         if self.mode == 8 and self.mstoch == 3:
             if self.mcorr == 1:
-                self.alpha = (v / self.v) ** (self.sdlny / self.sdlnv) * salpha * self.np.exp(0.5 * (self.sdlnv - self.sdlny) * self.sdlny)
+                self.alpha = (v / self.v) ** (self.sdlny / self.sdlnv) * salpha * dbexp(0.5 * (self.sdlnv - self.sdlny) * self.sdlny)
             elif self.mcorr == -1:
-                self.alpha = (v / self.v) ** (-self.sdlny / self.sdlnv) * salpha * self.np.exp(0.5 * (-self.sdlnv - self.sdlny) * self.sdlny)
+                self.alpha = (v / self.v) ** (-self.sdlny / self.sdlnv) * salpha * dbexp(0.5 * (-self.sdlnv - self.sdlny) * self.sdlny)
             self.omega = somega / salpha * self.alpha
 
         self.omega = self.omega / v * self.v
         self.dmu1 = self.dmu1 / v * self.v
         self.dmu2 = self.dmu2 / v * self.v
 
-        for i in range(10):
-            self.pulse[i]['time'] = self.pulse[i]['time'] / self.v * v
-            self.prodval1[i]['gamma'] = self.prodval1[i]['gamma'] / v * self.v
-            self.prodval2[i]['gamma'] = self.prodval2[i]['gamma'] / v * self.v
+        for i in range(self.npulse):
+            self.tpulse[i] = self.tpulse[i] / self.v * v
+        for i in range(self.npro1):
+            self.gamma1[i] = self.gamma1[i] / v * self.v
+        for i in range(self.npro2):
+            self.gamma2[i] = self.gamma2[i] / v * self.v
 
         if self.modb == 1 and self.massst != 1:
-            self.pulse[0]['conc'] = self.pulse[0]['conc'] / self.v * v
+            self.cpulse[0] = self.cpulse[0] / self.v * v
         if self.modb == 3 and self.massst == 1:
-            self.pulse[1]['time'] = stpulse[1]
+            self.tpulse[1] = stpulse[1]
 
-        c1, c2 = self.detcde()
+        c1, c2 = self.DetCDE()
 
         if self.mcon == 1:
             c = c1
@@ -194,7 +192,6 @@ class StoCDE(DetCDE):
             else:
                 conprov = prob * c * c
 
-        self.tt = t
         self.mode = mmode
         self.p = sp
         self.d = sd
@@ -207,12 +204,6 @@ class StoCDE(DetCDE):
         self.omega = somega
         self.dmu1 = sdmu1
         self.dmu2 = sdmu2
-        self.pulse[0]['conc'] = spulse
-
-        for i in range(10):
-            self.pulse[i]['time'] = stpulse[i]
-            self.prodval1[i]['gamma'] = sgamma1[i]
-            self.prodval2[i]['gamma'] = sgamma2[i]
 
         return conprov
         
@@ -299,7 +290,7 @@ class StoCDE(DetCDE):
         for stochastic models using Newton-Raphson method.
         """
         xlnm = np.log(x) - 0.5 * sdlnx * sdlnx
-        xmod = np.exp(xlnm - sdlnx * sdlnx)
+        xmod = dbexp(xlnm - sdlnx * sdlnx)
         xmin1 = max(1.0e-5, xmod - xmod * sdlnx)
         xmax1 = xmod + xmod * sdlnx
         cmin = 1.0e-7
@@ -337,7 +328,7 @@ class StoCDE(DetCDE):
         xlnm = np.log(avex) - 0.5 * sdlnx * sdlnx
         xln = np.log(x)
         arg = (xln - xlnm) * (xln - xlnm) / (2.0 * sdlnx * sdlnx)
-        xlnprob = np.exp(-arg) / (dpi * sdlnx * x)
+        xlnprob = dbexp(-arg) / (dpi * sdlnx * x)
         return xlnprob
 
     def blnprob(self, x, avex, sdlnx, y, avey, sdlny, rho):
@@ -350,250 +341,165 @@ class StoCDE(DetCDE):
         y1 = (np.log(y) - ylnm) / sdlny
         arg1 = (x1 * x1 - 2 * rho * x1 * y1 + y1 * y1) / (2.0 * (1.0 - rho * rho))
         arg2 = 2.0 * np.pi * sdlnx * sdlny * x * y * np.sqrt(1.0 - rho * rho)
-        blnprob = np.exp(-arg1) / arg2
+        blnprob = dbexp(-arg1) / arg2
         return blnprob
-        
-    def romb(self, func, xmin, xmax):
-        """Perform Romberg integration on log-transformed interval"""
-        area = 0.0
-        sstop = self.stoper
-        if xmin >= xmax:
-            return area
 
-        xln1 = np.log(xmin)
-        xln2 = np.log(xmax)
-        dx1 = xln2 - xln1
-        sum_val = 0.5 * xmin * func(xmin)
-        area = sum_val * dx1
-        r = np.zeros((self.level, self.level))
-        r[0, 0] = area
-        dx2 = dx1 / 2.0
-        inc = 1
-
-        for i in range(1, self.level):
-            xln = xln1 + dx2
-            for m in range(inc):
-                xe = np.exp(xln)
-                sum_val += xe * func(xe)
-                xln += dx1
-            area = sum_val * dx2
-            r[0, i] = area
-            for j in range(1, i + 1):
-                k = i + 1 - j
-                r[j, k] = (4.0 ** (j - 1) * r[j - 1, k + 1] - r[j - 1, k]) / (4.0 ** (j - 1) - 1)
-            if r[i, 0] > 0.0:
-                error = abs((r[i, 0] - r[i - 1, 1]) / r[i, 0])
-                if (error < self.stoper and i > 4) or (error < self.stoper * 100.0 and abs(area) < 1.0e-10):
-                    self.stoper = sstop
-                    return r[i, 0]
-            dx1 /= 2.0
-            dx2 /= 2.0
-            inc *= 2
-
-        self.stoper = sstop
-        return area
-
-    def romb2(self, func, xmin, xmax):
-        """Perform Romberg integration on log-transformed interval"""
-        area = 0.0
-        sstop = self.stoper
-        if xmin >= xmax:
-            return area
-
-        xln1 = np.log(xmin)
-        xln2 = np.log(xmax)
-        dx1 = xln2 - xln1
-        sum_val = 0.5 * xmin * func(xmin)
-        area = sum_val * dx1
-        r = np.zeros((self.level, self.level))
-        r[0, 0] = area
-        dx2 = dx1 / 2.0
-        inc = 1
-
-        for i in range(1, self.level):
-            xln = xln1 + dx2
-            for m in range(inc):
-                xe = np.exp(xln)
-                sum_val += xe * func(xe)
-                xln += dx1
-            area = sum_val * dx2
-            r[0, i] = area
-            for j in range(1, i + 1):
-                k = i + 1 - j
-                r[j, k] = (4.0 ** (j - 1) * r[j - 1, k + 1] - r[j - 1, k]) / (4.0 ** (j - 1) - 1)
-            if r[i, 0] > 0.0:
-                error = abs((r[i, 0] - r[i - 1, 1]) / r[i, 0])
-                if (error < self.stoper and i > 4) or (error < self.stoper * 100.0 and abs(area) < 1.0e-10):
-                    self.stoper = sstop
-                    return r[i, 0]
-            dx1 /= 2.0
-            dx2 /= 2.0
-            inc *= 2
-
-        self.stoper = sstop
-        return area
-
-    def chebylog(self, func, aa, bb):
-        """Perform integration of f(x) between a and b using M-point Gauss-Chebyshev quadrature formula"""
-        area = 0.0
-        sum_val = 0.0
-        a = np.log(aa)
-        b = np.log(bb)
-
-        for i in range(1, self.m + 1):
-            z1 = np.cos((2 * (i - 1) + 1) * np.pi / (2 * self.m))
-            x1 = (z1 * (b - a) + b + a) / 2.0
-            dx1 = np.exp(x1)
-            sum_val += dx1 * func(dx1) * np.sqrt(1.0 - z1 * z1)
-
-        area = (b - a) * np.pi * sum_val / (2 * self.m)
-        return area
-
-    def chebylog2(self, func, aa, bb):
-        """Perform integration of f(x) between a and b using M-point Gauss-Chebyshev quadrature formula"""
-        area = 0.0
-        sum_val = 0.0
-        a = np.log(aa)
-        b = np.log(bb)
-
-        for i in range(1, self.m + 1):
-            z1 = np.cos((2 * (i - 1) + 1) * np.pi / (2 * self.m))
-            x1 = (z1 * (b - a) + b + a) / 2.0
-            dx1 = np.exp(x1)
-            sum_val += dx1 * func(dx1) * np.sqrt(1.0 - z1 * z1)
-
-        area = (b - a) * np.pi * sum_val / (2 * self.m)
-        return area
-
-    def init_stocde(self):
+    def init_stocde(self,simparms):
         """
         Initialize stochastic model parameters before computation
         """
+        # Velocity for dimensionless variables, value may change for each iteration
+        mods = self.mode % 2
+        self.v = simparms['<V>'] # VELOCITY
 
-        self.d = self.parms.loc[self.curp,'<D>']# DISPERSIVITY
+        if self.modb == 3 and self.mass == 1:
+            self.tpulse[1] = simparms['T2']
+
+        if self.nredu in (0,1):
+            # CHANGE pulse TO DIMENSIONLESS VARIABLES
+            if self.modb in (3,4):
+                for i in range(self.npulse):
+                    self.tpulse[i] = self.tpulse[i] * self.v / self.zl
+            if (self.modb == 5):
+                self.tpulse[0] = self.tpulse[0] / self.v * self.zl
+
+            # CHANGE gamma TO DIMENSIONLESS VARIABLES FOR MODE=1,3,5
+            if mods == 1 and self.modp in (1,2) :
+                for i in range(self.npro1) :
+                    self.gamma1[i] = self.gamma1[i] * self.zl / self.v
+                    # self.zpro1[i] = self.zpro1[i] / self.zl
+
+        # PARAMETER FOR TOTAL MASS
+        if self.mass == 1:
+            if self.modb ==2:
+                self.cpulse[0] = simparms['MASS']
+            if self.modb in (1,3):
+                self.cpulse[0] = simparms['Cin']
+
+        self.d = simparms['<D>']# DISPERSIVITY
         self.p = self.v * self.zl / self.d
-        self.dk = self.parms.loc[self.curp,'<Kd>'] # DISTRIBUTION COEFFICIENT
+        self.dk = simparms['<Kd>'] # DISTRIBUTION COEFFICIENT
         self.r = 1.0 + self.rhoth * self.dk # RETARDATION FACTOR
-        self.dmu1 = self.parms.loc[self.curp,'mu1']# DEGRADATION RATE
+        self.dmu1 = simparms['mu1']# DEGRADATION RATE
         self.beta = 1.0
         self.omega = 0.0
         self.dmu2 = 0.0
         if self.nredu <= 1:
             self.dmu1 *= self.zl / self.v
-        self.sdlnv = self.parms.loc[self.curp,'SD.v']
+        self.sdlnv = simparms['SD.v']
         
         if self.mode == 3:
             self.y = self.dk
-            self.sdlny = self.parms.loc[self.curp,'SD.Kd']
+            self.sdlny = simparms['SD.Kd']
             self.betar = self.r
             if self.mk34 == 1 and self.mit >= 1:
                 self.sdlny = self.sdlnv
-                self.parms.loc[self.curp,'SD.Kd']= self.sdlny
+                simparms['SD.Kd']= self.sdlny
             if self.modd == 2 and self.mit >= 1:
                 self.sdln_d = self.sdlnv
-                self.parms.loc[self.curp,'SD.D']= self.sdln_d
+                simparms['SD.D']= self.sdln_d
             else:
-                self.sdln_d = self.parms.loc[self.curp,'SD.D']
-            self.corr = self.parms.loc[self.curp,'RhovKd']
+                self.sdln_d = simparms['SD.D']
+            self.corr = simparms['RhovKd']
         elif self.mode == 4:
             self.y = self.dk
-            self.sdlny = self.parms.loc[self.curp,'SD.Kd']
+            self.sdlny = simparms['SD.Kd']
             self.beta = 1.0 / self.r
             self.betar = 1.0
-            self.omega = self.parms.loc[self.curp,'omega']
-            self.dmu2 = self.parms.loc[self.curp,'mu2']
+            self.omega = simparms['omega']
+            self.dmu2 = simparms['mu2']
             if self.mit >= 1:
                 if self.mdeg == 1:
                     self.dmu2 = (self.r - 1.0) * self.dmu1
-                    self.parms.loc[self.curp,'mu2']= self.dmu2
+                    simparms['mu2']= self.dmu2
                 elif self.mdeg == 2:
                     self.dmu2 = 0
-                    self.parms.loc[self.curp,'mu2']= self.dmu2
+                    simparms['mu2']= self.dmu2
                 elif self.mdeg == 3:
                     self.dmu1 = 0.0
-                    self.parms.loc[self.curp,'mu1']= self.dmu1
+                    simparms['mu1']= self.dmu1
             if self.mk34 == 1 and self.mit >= 1:
                 self.sdlny = self.sdlnv
-                self.parms.loc[self.curp,'SD.Kd']= self.sdlny
+                simparms['SD.Kd']= self.sdlny
             if self.modd == 2 and self.mit >= 1:
                 self.sdln_d = self.sdlnv
-                self.parms.loc[self.curp,'SD.D']= self.sdln_d
+                simparms['SD.D']= self.sdln_d
             else:
-                self.sdln_d = self.parms.loc[self.curp,'SD.D']
-            self.corr = self.parms.loc[self.curp,'RhovKd']
+                self.sdln_d = simparms['SD.D']
+            self.corr = simparms['RhovKd']
         elif self.mode == 5:
             self.y = self.d
-            self.sdlny = self.parms.loc[self.curp,'SD.D']
+            self.sdlny = simparms['SD.D']
             self.betar = self.r
             if self.md56 == 1 and self.mit >= 1:
                 self.sdlny = self.sdlnv
-                self.parms.loc[self.curp,'SD.D']= self.sdlny
+                simparms['SD.D']= self.sdlny
             if self.modk == -2 and self.mit >= 1:
                 self.sdlnk = self.sdlnv
-                self.parms.loc[self.curp,'SD.Kd']= self.sdlnk
+                simparms['SD.Kd']= self.sdlnk
             else:
-                self.sdlnk = self.parms.loc[self.curp,'SD.Kd']
-            self.corr = self.parms.loc[self.curp,'RhovD']
+                self.sdlnk = simparms['SD.Kd']
+            self.corr = simparms['RhovD']
         elif self.mode == 6:
             self.y = self.d
-            self.sdlny = self.parms.loc[self.curp,'SD.D']
+            self.sdlny = simparms['SD.D']
             self.beta = 1.0 / self.r
             self.betar = 1.0
-            self.omega = self.parms.loc[self.curp,'omega']
-            self.dmu2 = self.parms.loc[self.curp,'mu2']
+            self.omega = simparms['omega']
+            self.dmu2 = simparms['mu2']
             if self.mit >= 1:
                 if self.mdeg == 1:
                     self.dmu2 = (self.r - 1.0) * self.dmu1
-                    self.parms.loc[self.curp,'mu2']= self.dmu2
+                    simparms['mu2']= self.dmu2
                 elif self.mdeg == 2:
                     self.dmu2 = 0
-                    self.parms.loc[self.curp,'mu2']= self.dmu2
+                    simparms['mu2']= self.dmu2
                 elif self.mdeg == 3:
                     self.dmu1 = 0.0
-                    self.parms.loc[self.curp,'mu1']= self.dmu1
+                    simparms['mu1']= self.dmu1
 
             if self.md56 == 1 and self.mit >= 1:
                 self.sdlny = self.sdlnv
-                self.parms.loc[self.curp,'SD.D']= self.sdlny
+                simparms['SD.D']= self.sdlny
 
             if self.modd == -2 and self.mit >= 1:
                 self.sdlnk = self.sdlnv
-                self.parms.loc[self.curp,'SD.Kd']= self.sdlnk
+                simparms['SD.Kd']= self.sdlnk
             else:
-                self.sdlnk = self.parms.loc[self.curp,'SD.Kd']
+                self.sdlnk = simparms['SD.Kd']
 
-            self.corr = self.parms.loc[self.curp,'RhovD']
+            self.corr = simparms['RhovD']
         elif self.mode == 8:
-            self.alpha = self.parms.loc[self.curp,'alpha']
+            self.alpha = simparms['alpha']
             self.y = self.alpha
             self.omega = self.alpha * (self.r - 1.0) * self.zl / self.v
             self.beta = 1.0 / self.r
             self.betar = 1.0
-            self.dmu2 = self.parms.loc[self.curp,'mu2']
+            self.dmu2 = simparms['mu2']
             if self.mit >= 1:
                 if self.mdeg == 1:
                     self.dmu2 = (self.r - 1.0) * self.dmu1
-                    self.parms.loc[self.curp,'mu2']= self.dmu2
+                    simparms['mu2']= self.dmu2
                 elif self.mdeg == 2:
                     self.dmu2 = 0
-                    self.parms.loc[self.curp,'mu2']= self.dmu2
+                    simparms['mu2']= self.dmu2
                 elif self.mdeg == 3:
                     self.dmu1 = 0.0
-                    self.parms.loc[self.curp,'mu1']= self.dmu1
+                    simparms['mu1']= self.dmu1
 
             if self.mal8 == 1 and self.mit >= 1:
                 self.sdlny = self.sdlnv
-                self.parms.loc[self.curp,'SD.alp']= self.sdlny
+                simparms['SD.alp']= self.sdlny
             else:
-                self.sdlny = self.parms.loc[self.curp,'SD.alp']
+                self.sdlny = simparms['SD.alp']
             
             if self.modd == -2 and self.mit >= 1:
                 self.sdlnk = self.sdlnv
-                self.parms.loc[self.curp,'SD.Kd']= self.sdlnk
+                simparms['SD.Kd']= self.sdlnk
             else:
-                self.sdlnk = self.parms.loc[self.curp,'SD.Kd']
+                self.sdlnk = simparms['SD.Kd']
 
-            self.corr = self.parms.loc[self.curp,'RhovAl']
+            self.corr = simparms['RhovAl']
         
         # MSTOCH;    Index for stochastic v and Y
         #   1: V; VARIABLE Y;CONSTANT
@@ -604,11 +510,6 @@ class StoCDE(DetCDE):
         #         evaluation of the integral limits
         #   0: CALCULATE INTEGRAL LIMITS
         #   1: SKIP THIS PART.
-        # MSTOCH;    Index for stochastic v and Y
-        # MSTOCH=1: V; VARIABLE Y;CONSTANT
-        # MSTOCH=2: V; CONSTANT Y;VARIABLE
-        # MSTOCH=3: POSITIVE OR NEGATIVE CORRELATION BETWEEN  V & Y 
-        # MSTOCH=4: V; VARIABLE Y;VARIABLE
         # MCORR=1 POSITIVE CORRELATION V&Y.
         # MCORR=-1 NEGATIVE CORRELATION V&Y.
         # MCORR=0 NO CORRELATION V&Y.
@@ -689,9 +590,9 @@ class StoCDE(DetCDE):
         # -1 NEGATIVE CORRELATION V&D.
 
         if self.mode in (3,4,8) :
-            if self.parms.loc[self.curp,'SD.D'] < 1.0e-7:
+            if self.parms.loc['binit','SD.D'] < 1.0e-7:
                 self.modd = 0
-            elif abs(self.parms.loc[self.curp,'SD.v']- self.parms.loc[self.curp,'SD.D']) < 1.0e-5:
+            elif abs(self.parms.loc['binit','SD.v']- self.parms.loc['binit','SD.D']) < 1.0e-5:
                 self.modd= 2
             else:
                 self.modd= 1
@@ -702,7 +603,7 @@ class StoCDE(DetCDE):
         #   MD56=0  SDLND AND SALNV ARE INDEPENSENT.
         #  WHEN MODD=0, NO ESTIMATE FOR SDLNV (SIG.V)
         if self.mode in (5,6):
-            if abs(self.parms.loc[self.curp,'SD.v']- self.parms.loc[self.curp,'SD.D']) < 1.0e-5:
+            if abs(self.parms.loc['binit','SD.v']- self.parms.loc['binit','SD.D']) < 1.0e-5:
                 self.md56 = 1
 
         if self.mit >= 1:
@@ -723,9 +624,9 @@ class StoCDE(DetCDE):
         #    MODK=1 positive correlation, MODK=0 constant, MODK=-1 negative,
         #    MODK=-2 means SDLNK=SDLNV
         if self.mode in (5,6,8):
-            if self.parms.loc[self.curp,'SD.Kd']< 1.0e-7:
+            if self.parms.loc['binit','SD.Kd']< 1.0e-7:
                 modk = 0
-            elif abs(self.parms.loc[self.curp,'SD.v']- self.parms.loc[self.curp,'SD.Kd']) < 1.0e-5:
+            elif abs(self.parms.loc['binit','SD.v']- self.parms.loc['binit','SD.Kd']) < 1.0e-5:
                 modk = -2
             else:
                 modk = -1
@@ -733,7 +634,7 @@ class StoCDE(DetCDE):
         # ---- DISTRIBUTION COEFFICIENT FOR MODE=3,4 => MK34 ----
         #    MK34=1 if abs(SDLNK - SDLNV)<1e-05, else 0
         if self.mode in (3,4):
-            if abs(self.parms.loc[self.curp,'SD.v']- self.parms.loc[self.curp,'SD.Kd']) < 1.0e-5:
+            if abs(self.parms.loc['binit','SD.v']- self.parms.loc['binit','SD.Kd']) < 1.0e-5:
                 mk34 = 1
 
         # ---- If MIT >=1, update INDEX array based on MK34 ----
@@ -755,7 +656,7 @@ class StoCDE(DetCDE):
         #     MAL8=1  SDLNAL=SDLNV 
         #     MAL8=0  SDLNAL AND SALNV ARE INDEPENSENT.
         if self.mode == 8:
-            if abs(self.parms.loc[self.curp,'SD.v']- self.parms.loc[self.curp,'SD.alp']) < 1.0e-5:
+            if abs(self.parms.loc['binit','SD.v']- self.parms.loc['binit','SD.alp']) < 1.0e-5:
                 mal8 = 1
             if self.mit >= 1:
                 if self.parms.loc['bfit','SD.v'] == self.parms.loc['bfit','SD.alp'] and mal8 == 1:

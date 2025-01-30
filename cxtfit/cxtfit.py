@@ -20,8 +20,6 @@ class CXTfit:
     """ Main Class of CXTFIT Code
     Parameters
     ----------
-    ncase: int, default = 1
-        number of simulation cases
     simcases: list of CXTFitcase
         list of simulation cases
     """
@@ -311,7 +309,7 @@ class CXTfit:
                          4: 'MULTIPLE PULSE INPUT',
                          5: 'EXPONENTIAL INPUT',
                          6: 'ARBITRARY INPUT (DEFINE FUNCTION CINPUT(T))'}[modb]
-                print(f" BOUNDARY CONDITION CODE (MODB = {modb})\n PULSE INPUT\n")
+                print(f"{text1} (MODB = {modb})\n BOUNDARY CONDITION")
                 if modb != 0:
                     print(pulse)
             
@@ -330,7 +328,6 @@ class CXTfit:
                 cini=[]
                 for i in range(nini):
                     tline = infile.readline().split()
-                    print(tline)
                     cini.append({'conc':float(tline[0]),'z':float(tline[1])})
             elif modi == 3: #exponential initial concentration
                 tline = infile.readline().split()
@@ -349,7 +346,7 @@ class CXTfit:
                          2: 'STEPWISE INITIAL CONCENTRATION',
                          3: 'EXPONENTIAL INITIAL CONCENTRATION',
                          4: 'DELTA(Z-Z1) & CONSTANT INITIAL CONCENTRATION'}[modi]
-                print(f" {text1} (MODI = {modi})\n INITIAL CONCENTRATION\n")
+                print(f" \n {text1} (MODI = {modi})\n INITIAL CONCENTRATION\n")
                 if modi != 0:
                     print(cini)
 
@@ -421,25 +418,25 @@ class CXTfit:
                 while True:
                     tline = infile.readline().split()
                     # AT THE END OF DATA SET, GIVE "0,0,0" TO INDICATE THE LAST LINE
-                    if abs(float(tline[0])) <1e-7 and nob >=1:
+                    if all(abs(float(x)) < 1e-7 for x in tline) and nob >=1:
                         break
                     if inputm == 0: #Z(I), T(I), C(I)
                         if mit >=1:
-                            obsdata.append({'t':float(tline[1]),'z':float(tline[0]),'c':float(tline[2])})
+                            obsdata.append({'t':float(tline[1]),'z':float(tline[0]),'cobs':float(tline[2])})
                         else:
-                            obsdata.append({'t':float(tline[1]),'z':float(tline[0]),'c':0.0})
+                            obsdata.append({'t':float(tline[1]),'z':float(tline[0]),'cobs':0.0})
                     elif inputm == 1: #T(I), C(I) FOR SAME Z (Breakthrough Curve)
                         if mit >=1 :
-                            obsdata.append({'t':float(tline[0]),'z':dumtz,'c':float(tline[1])})
+                            obsdata.append({'t':float(tline[0]),'z':dumtz,'cobs':float(tline[1])})
                         else:
-                            obsdata.append({'t':float(tline[0]),'z':dumtz,'c':0.0})
+                            obsdata.append({'t':float(tline[0]),'z':dumtz,'cobs':0.0})
                     elif inputm == 2: #Z(I), C(I) FOR SAME T (Depth Profile)
                         if mit >=1:
-                            obsdata.append({'t':dumtz,'z':float(tline[0]),'c':float(tline[1])})
+                            obsdata.append({'t':dumtz,'z':float(tline[0]),'cobs':float(tline[1])})
                         else:
-                            obsdata.append({'t':dumtz,'z':float(tline[0]),'c':0.0})
+                            obsdata.append({'t':dumtz,'z':float(tline[0]),'cobs':0.0})
                     elif inputm == 3: #C(I), Z(I), T(I)
-                            obsdata.append({'t':float(tline[2]),'z':float(tline[1]),'c':float(tline[0])})
+                            obsdata.append({'t':float(tline[2]),'z':float(tline[1]),'cobs':float(tline[0])})
                     else :
                         raise ValueError('ERROR! INPUTM SHOULD BE 0,1,2,3')
                     nob += 1
@@ -457,7 +454,7 @@ class CXTfit:
                 mprint=int(tline[6])
                 zi_values = [zi + i * dz for i in range(nz)]
                 ti_values = [ti + i * dt for i in range(nt)]
-                obsdata = [{'t': t, 'z': z, 'c': 0.0} 
+                obsdata = [{'t': t, 'z': z} 
                            for z in zi_values for t in ti_values]
             
             obsdata = pd.DataFrame(obsdata)
@@ -500,118 +497,3 @@ class CXTfit:
             f.close()
 
         return cls(simcases)
-    
-    def default_case(self):
-        """Create default simulation case
-        """
-        parms = self.__default_parm()
-        pulse = self.__default_pulse()
-        cini = self.__default_cini()
-        prodval1, prodval2 = self.__default_prodval()
-        obsdata = self.__default_obsdata()
-
-        simcase = CXTsim(title='Default Case',
-                            inverse=0,
-                            mode=1,
-                            nredu=0,
-                            modc=1,
-                            zl=1.0,
-                            mit=0,
-                            ilmt=0,
-                            mass=0,
-                            massst=0,
-                            mneq=0,
-                            mdeg=0,
-                            phim=0.0,
-                            rhoth=0.0,
-                            parms=parms,
-                            modb=0,
-                            pulse=pulse,
-                            modi=0,
-                            cini=cini,
-                            modp=0,
-                            mpro=0,
-                            inputm=0,
-                            prodval1=prodval1,
-                            prodval2=prodval2,
-                            obsdata=obsdata,
-                            mprint=0)
-        return [simcase]
-    
-    def __default_parm(self) :
-        ntp,bname,binit = {
-            1: (4,['V', 'D', 'R', 'mu'],
-                [1,1,0,0]),
-            2: (7,['V', 'D', 'R', 'beta', 'omega', 'mu1', 'mu2'],
-                [1,1,0,0,0,0,0]),
-            3: (8,['<V>', '<D>', '<Kd>', 'mu1', 'SD.v', 'SD.Kd', 'SD.D', 'RhovKd'],
-                [1,1,0,0,0,0,0,0]),
-            4: (10,['<V>', '<D>', '<Kd>', 'omega', 'mu1', 'mu2', 'SD.v', 'SD.Kd', 'SD.D', 'RhovKd'],
-                [1,1,0,0,0,0,0,0,0,0]),
-            5: (8,['<V>', '<D>', '<Kd>', 'mu1', 'SD.v', 'SD.Kd', 'SD.D', 'RhovD'],
-                [1,1,0,0,0,0,0,0]),
-            6: (10,['<V>', '<D>', '<Kd>', 'omega', 'mu1', 'mu2', 'SD.v', 'SD.Kd', 'SD.D', 'RhovD'],
-                [1,1,0,0,0,0,0,0,0,0]),
-            8: (11,['<V>', '<D>', '<Kd>', 'alpha', 'mu1', 'mu2', 'SD.v', 'SD.Kd', 'SD.D', 'SD.alp', 'RhovAl'],
-                [1,1,0,0,0,0,0,0,0,0])
-        }[self.mode]
-        bfit = [0] * ntp
-
-        if self.mass == 1 :
-            if self.modb == 1: #dirac delta input
-                binit.append(self.pulse[0]['conc'])
-                bname.append('MASS')
-                bfit.append(1)
-            elif self.modb == 2: #step input
-                binit.append(self.pulse[0]['conc'])
-                bname.append('Cin')
-                bfit.append(1)
-            elif self.modb == 3: #single pulse input
-                binit.append(self.pulse[0]['conc'])
-                binit.append(self.pulse[1]['time'])
-                bname.append('Cin')
-                if self.massst == 0:
-                    bname.append('T2')
-                else:
-                    bname.append('Mo')
-                bfit.append(1)
-                bfit.append(1)
-        
-        parms = pd.DataFrame([binit], columns=bname, index=['binit'])
-        parms.loc['bfit'] = bfit
-
-        self.ilmt = 0
-        parms.loc['bmin'] = 0
-        parms.loc['bmax'] = 0
-        
-        return parms
-    
-    def __default_pulse(self):
-        pulse = [{'conc': 1.0, 'time': 0.0},
-                 {'conc': 0.0, 'time': 1.0}]
-        return pulse
-    
-    def __default_cini(self):
-        cini = [{'conc': 1.0, 'z': 0.0},
-                {'conc': 0.0, 'z': 1.0}]
-            
-        return cini
-    
-    def __default_prodval(self):
-        prodval1 = [{'gamma': 1.0, 'zpro': 0.0},
-                    {'gamma': 0.0, 'zpro': 1.0}]
-        prodval2 = [{'gamma': 1.0, 'zpro': 0.0},
-                    {'gamma': 0.0, 'zpro': 1.0}]
-        return prodval1, prodval2
-    
-    def __default_obsdata(self):
-        nz, dz, zi, nt, dt, ti = 10, 1.0, 0.0, 10, 1.0, 0.0
-        zi_values = [zi + i * dz for i in range(nz)]
-        ti_values = [ti + i * dt for i in range(nt)]
-        obsdata = [{'t': t, 'z': z, 'c': 0.0} 
-                    for z in zi_values for t in ti_values]
-        obsdata = pd.DataFrame(obsdata)
-            
-        return obsdata
-    
-
