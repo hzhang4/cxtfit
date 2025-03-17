@@ -1,6 +1,6 @@
 import numpy as np
-# from scipy.special import erfc,i0,i1
-# from scipy.integrate import quad
+from scipy.special import erfc,i0,i1
+from scipy.integrate import quad
 
 def dbexp(x):
     if x < -100:
@@ -9,41 +9,6 @@ def dbexp(x):
         return np.exp(700.0)
     else:
         return np.exp(x)
-
-def exf(a, b):
-    """
-    Calculate EXP(A) ERFC(B).
-
-    Args:
-        a (float): The value of A.
-        b (float): The value of B.
-
-    Returns:
-        float: The calculated value.
-    """
-    if abs(a) > 170.0 and b <= 0.0:
-        return 0.0
-
-    c = a - b * b
-    if abs(c) > 170.0 and b >= 0.0:
-        return 0.0
-
-    if c < -170.0:
-        return 0.0
-
-    x = abs(b)
-    if x > 3.0:
-        y = 0.5641896 / (x + 0.5 / (x + 1.0 / (x + 1.5 / (x + 2.0 / (x + 2.5 / x + 1.0)))))
-    else:
-        t = 1.0 / (1.0 + 0.3275911 * x)
-        y = t * (0.2548296 - t * (0.2844967 - t * (1.421414 - t * (1.453152 - 1.061405 * t))))
-
-    exf_value = y * np.exp(c)
-
-    if b < 0.0:
-        exf_value = 2.0 * np.exp(a) - exf_value
-
-    return exf_value
 
 def gold(x, y):
     # Converted from GOLD function in FUNC2.FOR original Fortran code
@@ -102,6 +67,16 @@ def gold(x, y):
     
     return gold
 
+# def gold(a, b):
+    # Using scipy.integrate.quad to calculate Goldstein's J-function J(a,b)
+    # def f(x,b):
+    #     m1 = i0(2*np.sqrt(b*x))
+    #     return dbexp(-x)*m1
+
+    # # Perform the integration
+    # result, _ = quad(f, 0, a, args=(b,))
+    # return 1 - dbexp(-b) * result
+
 def expbi0(x, z):
     """Returns EXP(Z)*I0(X) for any real X and Z"""
     p = [1.0, 3.5156229, 3.0899424, 1.2067492, 0.2659732, 0.0360768, 0.0045813]
@@ -116,6 +91,7 @@ def expbi0(x, z):
     return expbi0
 
 # Converted from EXPBI1 function in FUNC2.FOR original Fortran code
+@staticmethod
 def expbi1(x, z):
     """Returns EXP(Z)*I1(X) for any real X and Z"""
     p = [0.5, 0.87890594, 0.51498869, 0.15084984, 0.02658733, 0.00301532, 0.00032411]
@@ -131,64 +107,6 @@ def expbi1(x, z):
             expbi1 = -expbi1
     return expbi1
 
-def chebycon(func, a, b, mc = 0, icheb=1, mm=8, stopch=1.0e-3, level=10, ctol=1.0e-10):
-    """
-    Perform integration of F(x) between A and B using M-point Gauss-Chebyshev quadrature formula.
-    This function evaluates integrals for nonequilibrium CDE.
-
-    Args:
-        func (callable): The function to integrate.
-        a (float): Lower limit of integration.
-        b (float): Upper limit of integration.
-        mc (int): mc = 1 mobile concentration mc = 2 immobile concentration. Default is None.
-        icheb (int): If 0, use fixed number of integration points. If 1, increase number of points using stop criteria.
-        mm (int): Number of Gauss-Chebyshev nodes.
-        stopch (float): The stopping criterion for the integration.
-        level (int): The maximum number of iterations for adaptive integration.
-        ctol (float): The tolerance for the integration.
-
-    Returns:
-        float: The approximate value of the integral.
-    """
-    m = mm
-    if icheb != 1:
-        summ = 0.0
-        for i in range(1, m + 1):
-            z1 = np.cos((2 * (i - 1) + 1) * np.pi / (2 * m))
-            x1 = (z1 * (b - a) + b + a) / 2.0
-            if mc:
-                fx1 = func(x1, mc)
-            else:
-                fx1 = func(x1)
-            summ += fx1 * np.sqrt(1.0 - z1 * z1)
-        area = (b - a) * np.pi * summ / (2 * m)
-        return area
-
-    area1 = 0.0
-    for _ in range(level):
-        summ = 0.0
-        for i in range(1, m + 1):
-            z1 = np.cos((2 * (i - 1) + 1) * np.pi / (2 * m))
-            x1 = (z1 * (b - a) + b + a) / 2.0
-            if mc:
-                fx1 = func(x1, mc)
-            else:
-                fx1 = func(x1)
-            summ += fx1 * np.sqrt(1.0 - z1 * z1)
-        area = (b - a) * np.pi * summ / (2 * m)
-
-        if abs(area) < ctol:
-            return area
-
-        error = abs(area - area1) / area
-        if error < stopch:
-            # print(f'chebycon: m = {m} area = {area} area1 = {area1} error = {error}')
-            return area
-        else:
-            area1 = area
-            m *= 2
-    raise ValueError("chebycon Failed to converge")
-    
 # Converted from functions in DETCDE.FOR original Fortran code
 class DetCDE:
     """
@@ -215,14 +133,8 @@ class DetCDE:
             self.b = omegamu2 / (self.r -self.betr)
 
         cbou1, cbou2 = self.bound()
-        cbou1 = cbou1 if cbou1 > self.ctol else 0.0
-        cbou2 = cbou2 if cbou2 > self.ctol else 0.0
         cint1, cint2 = self.initial()
-        cint1 = cint1 if cint1 > self.ctol else 0.0
-        cint2 = cint2 if cint2 > self.ctol else 0.0
         cpro1, cpro2 = self.produc()
-        cpro1 = cpro1 if cpro1 > self.ctol else 0.0
-        cpro2 = cpro2 if cpro2 > self.ctol else 0.0
 
         c1 = cbou1 + cint1 + cpro1
         if mods == 0: # nonequilibrium CDE
@@ -245,7 +157,6 @@ class DetCDE:
                 bmass = self.cpulse[0]
 
             c1 = self.cc0(self.tt) * dbexp(-self.omega * self.tt / self.betr)
-            # print(self.cpulse[0],self.v, self.zl,bmass)
             if mods == 1: # equilibrium CDE
                 c1 *= bmass
                 return c1, 0.0
@@ -255,14 +166,14 @@ class DetCDE:
                 tmin = max(0.0, self.betr * (self.zz + 60.0 * (1.0 - ap) / self.p))
 
                 mc = 1
-                a1 = chebycon(self.ctran, tmin, tmax, mc)
-                # a1, _ = quad(self.ctran, tmin, tmax, args=(mc,))
+                # a1 = self.chebycon(self.ctran, tmin, tmax, mc)
+                a1, _ = quad(self.ctran, tmin, tmax, args=(mc,))
                 c1 = (c1 + a1) * bmass
 
                 mc = 2
-                c2 = chebycon(self.ctran, tmin, tmax, mc) * bmass
-                # a2, _ = quad(self.ctran, tmin, tmax, args=(mc,))
-                # c2 = a2 * bmass
+                # c2 = self.chebycon(self.ctran, tmin, tmax, mc) * bmass
+                a2, _ = quad(self.ctran, tmin, tmax, args=(mc,))
+                c2 = a2 * bmass
 
                 return c1, c2
 
@@ -285,11 +196,9 @@ class DetCDE:
                     if ttt <= 0 :
                         return c1, c2
                     mc = 1
-                    a1 = chebycon(self.ctran, tmin, tmax, mc)
-                    # a1, _ = quad(self.cbj, 0, ttt, args=(ttt,mc))
+                    a1, _ = quad(self.cbj, 0, ttt, args=(ttt,mc))
                     mc = 2
-                    # a2, _ = quad(self.cbj, 0, ttt, args=(ttt,mc))
-                    a2 = chebycon(self.ctran, tmin, tmax, mc)
+                    a2, _ = quad(self.cbj, 0, ttt, args=(ttt,mc))
 
                 if i == 0:
                     c1 = self.cpulse[i] * a1
@@ -306,13 +215,13 @@ class DetCDE:
                 a2 = 0.0
             else:
                 mc = 1
-                a11 = chebycon(self.cbal, 0.0, self.tt, mc)
-                # a11, _ = quad(self.cbal, 0.0, self.tt, args=(mc,))
+                # a11 = self.chebycon(self.cbal, 0.0, self.tt, mc)
+                a11, _ = quad(self.cbal, 0.0, self.tt, args=(mc,))
                 a1 = self.cc4(self.tt, self.da) * dbexp(-self.a * self.tt) + a11
 
                 mc = 2
-                a2 = chebycon(self.cbal, 0.0, self.tt, mc)
-                # a2, _ = quad(self.cbal, 0.0, self.tt, args=(mc,))
+                # a2 = self.chebycon(self.cbal, 0.0, self.tt, mc)
+                a2, _ = quad(self.cbal, 0.0, self.tt, args=(mc,))
 
             c1 = self.cpulse[0] * a1
             c2 = self.cpulse[0] * a2
@@ -328,18 +237,18 @@ class DetCDE:
                 dum1 = 1.0 + 4.0 * (self.dmu1 + dum) / self.p
                 mc = 1
                 if dum1 < self.parmin:
-                    a1 = chebycon(self.cbexp, 0.0, self.tt, mc)
-                    # a1, _ = quad(self.cbexp, 0.0, self.tt, args=(mc,))
+                    # a1 = self.chebycon(self.cbexp, 0.0, self.tt, mc)
+                    a1, _ = quad(self.cbexp, 0.0, self.tt, args=(mc,))
                 else:
                     a1 = dbexp(-self.tpulse[0] * self.tt) * self.cc4(self.tt, dum)
             else:
                 mc = 1
-                a1 = chebycon(self.cbexp, 0.0, self.tt, mc)
-                # a1, _ = quad(self.cbexp, 0.0, self.tt, args=(mc,))
+                # a1 = self.chebycon(self.cbexp, 0.0, self.tt, mc)
+                a1, _ = quad(self.cbexp, 0.0, self.tt, args=(mc,))
 
                 mc = 2
-                a2 = chebycon(self.cbexp, 0.0, self.tct, mc)
-                # a2, _ = quad(self.cbexp, 0.0, self.tt, args=(mc,))
+                # a2 = self.chebycon(self.cbexp, 0.0, self.tct, mc)
+                a2, _ = quad(self.cbexp, 0.0, self.tt, args=(mc,))
                 a2 = self.omega / (self.r - self.betr) * a2
 
             c1 += self.cpulse[1] * a1
@@ -348,16 +257,16 @@ class DetCDE:
             return c1, c2
 
         elif self.modb == 6: # Arbitrary input
-            c1 = chebycon(self.cbin1, 0.0, self.tt)
-            # c1, _ = quad(self.cbin1, 0.0, self.tt)
+            # c1 = self.cheby(self.cbin1, 0.0, self.tt)
+            c1, _ = quad(self.cbin1, 0.0, self.tt)
             if self.modc not in [3, 4] and self.zz < self.dzmin:
                 c1 = self.cinput(self.tt)
 
             if mods == 1:
                 return c1, 0.0
             else :
-                c2 = chebycon(self.cbin2, 0.0, self.tt)
-                # c2, _ = quad(self.cbin2, 0.0, self.tt)
+                # c2 = self.cheby(self.cbin2, 0.0, self.tt)
+                c2, _ = quad(self.cbin2, 0.0, self.tt)
                 c2 = c2 * self.omega / (self.r - self.betr)
 
                 return c1, c2
@@ -399,11 +308,11 @@ class DetCDE:
             a1 = 0.0
         else:
             mc = 1
-            a1 = chebycon(self.civp, 0.0, self.tt, mc)
-            # a1, _ = quad(self.civp, 0.0, self.tt, args=(mc,))
+            # a1 = self.chebycon(self.civp, 0.0, self.tt, mc)
+            a1, _ = quad(self.civp, 0.0, self.tt, args=(mc,))
             mc = 2
-            a2 = chebycon(self.civp, 0.0, self.tt, mc)
-            # a2, _ = quad(self.civp, 0.0, self.tt, args=(mc,))
+            # a2 = self.chebycon(self.civp, 0.0, self.tt, mc)
+            a2, _ = quad(self.civp, 0.0, self.tt, args=(mc,))
 
         mcc0 = self.cc0(self.tt)
         mcc1 = self.cc1(self.tt)
@@ -482,11 +391,10 @@ class DetCDE:
         #             return c1, c2
 
         # Eq.(2.33) or (2.34) (current setting)
-        # c1 = chebycon(self.c1pro, 0.0, self.tt)
+        # c1 = self.cheby(self.c1pro, 0.0, self.tt)
         
         mods = self.mode % 2
-        c1 = chebycon(self.c1pro, 0.0, self.tt)
-        # c1, _ = quad(self.c1pro, 0.0, self.tt)
+        c1, _ = quad(self.c1pro, 0.0, self.tt)
 
         if mods == 1: # equilibrium CDE
             return c1, 0.0
@@ -516,8 +424,8 @@ class DetCDE:
             else:
                 raise ValueError("ERROR! MODP SHOULD BE 0,1,2,3")
         else:
-            a2 = chebycon(self.c2pro, 0.0, self.tt)
-            # a2, _ = quad(self.c2pro, 0.0, self.tt)
+            # a2 = self.cheby(self.c2pro, 0.0, self.tt)
+            a2, _ = quad(self.c2pro, 0.0, self.tt)
             a3 = omegamu2 * (1.0 - dbexp(-omegamu2 * tconv))
 
             if self.modp in (0, 1, 2):
@@ -564,7 +472,7 @@ class DetCDE:
         (SOLUTION USING GOLDSTEIN'S J-FUNCTION)
         """
         g = self.cc0(tau)
-        if g < self.ctol:
+        if g < 1e-7:
             return 0.0
 
         at = self.a * tau
@@ -631,15 +539,15 @@ class DetCDE:
         c1 = g * dbexp(-self.omega * tau / self.betr)
         if mods != 1:
             mc = 1
-            a1 = chebycon(self.ctran, 0.0, tau, mc)
-            # a1, _ = quad(self.ctran, 0.0, tau, args=(mc,))
+            # a1 = self.chebycon(self.ctran, 0.0, tau, mc)
+            a1, _ = quad(self.ctran, 0.0, tau, args=(mc,))
         return (c1 + a1) * self.cinput(self.tt - tau)
 
     def cbin2(self, tau):
         """Calculate argument in integral for arbitrary input given in function CINPUT for nonequilibrium phase"""
 
-        a1 = self.cheby2(self.cbin1, 0.0, tau)
-        # a1, _ = quad(self.cbin1, 0.0, tau)
+        # a1 = self.cheby2(self.cbin1, 0.0, tau)
+        a1, _ = quad(self.cbin1, 0.0, tau)
         return a1 * dbexp(-self.b * (self.tt - tau))
 
     def civp(self, tau, mc):
@@ -768,19 +676,14 @@ class DetCDE:
         """Calculate solutions for delta input travel time distribution for equilibrium CDE"""
         dg = dbexp(-self.dmu1 / self.betr * tau)
         g1 = dbexp(self.p * (self.betr * self.zz - tau) * (tau - self.betr * self.zz) / (4.0 * self.betr * tau))
-        # print(tau, self.zz, self.p, self.betr,  self.dmu1)
         
         if self.modc in (3, 4):  # third-type concentration
             g2 = np.sqrt(self.p / (self.betr * tau))
-            gexf = exf(self.p * self.zz, g2 / 2.0 * (self.betr * self.zz + tau))
-            gcc0 = dg * (0.56419 * g2 * g1 - self.p / (2.0 * self.betr) *  gexf)
-            # print(tau, dg, g1, g2, gexf, gcc0)
+            gexf = dbexp(self.p * self.zz) * erfc(g2 / 2.0 * (self.betr * self.zz + tau))
+            return dg * (0.56419 * g2 * g1 - self.p / (2.0 * self.betr) *  gexf)
         else:
             g2 = np.sqrt(self.p * self.betr / (4.0 * np.pi * tau))
-            gcc0 = dg * (self.zz / tau) * g2 * g1
-            # print(tau, dg, g1, g2, gcc0)
-        
-        return gcc0
+            return dg * (self.zz / tau) * g2 * g1
         
     def cc1(self, tau):
         """Calculate equilibrium solutions for step input"""
@@ -788,10 +691,10 @@ class DetCDE:
         rba = np.sqrt(ba)
         rbb = np.sqrt(self.p * tau / np.pi / self.betr)
         bb1 = rba * (self.betr * self.zz - tau)
-        g1 = exf(0.0, bb1)
+        g1 = erfc(bb1)
         aa2 = self.p * self.zz
         bb2= rba * (self.betr * self.zz + tau)
-        g2 = exf(aa2, bb2) 
+        g2 = dbexp(aa2) * erfc(bb2) 
 
         if self.modc in (3, 4): # third-type concentration
             g3 = dbexp(-ba * (self.betr * self.zz - tau) * (self.betr * self.zz - tau))
@@ -804,8 +707,8 @@ class DetCDE:
         ba = self.p / (4.0 * self.betr * tau)
         rba = np.sqrt(ba)
         rbb = np.sqrt(self.p * tau / np.pi / self.betr)
-        g1 = exf(0.0, rba * (self.betr * (self.zz - z1) - tau))
-        g2 = exf(self.p * self.zz, rba * (self.betr * (self.zz + z1) + tau))
+        g1 = erfc(rba * (self.betr * (self.zz - z1) - tau))
+        g2 = dbexp(self.p * self.zz) * erfc(rba * (self.betr * (self.zz + z1) + tau))
         
         if self.modc in (3, 4):  # third-type concentration
             g3 = dbexp(self.p * self.zz - ba * (self.betr * (self.zz + z1) + tau) * (self.betr * (self.zz + z1) + tau))
@@ -824,11 +727,11 @@ class DetCDE:
         ba = self.p / (4.0 * self.betr * tau)
         rba = np.sqrt(ba)
         a1 = dbexp(z1 * z1 * tau / self.betr / self.p + z1 * tau / self.betr - z1 * self.zz)
-        g1 = exf(0.0, rba * (self.betr * self.zz - (1.0 + 2.0 * z1 / self.p) * tau))
-        g2 = exf(self.p * self.zz + 2.0 * z1 * self.zz, rba * (self.betr * self.zz + (1.0 + 2.0 * z1 / self.p) * tau))
+        g1 = erfc(rba * (self.betr * self.zz - (1.0 + 2.0 * z1 / self.p) * tau))
+        g2 = dbexp(self.p * self.zz + 2.0 * z1 * self.zz) * erfc(rba * (self.betr * self.zz + (1.0 + 2.0 * z1 / self.p) * tau))
         
         if self.modc in (3, 4):  # third-type concentration
-            g3 = exf(self.p * self.zz, rba * (self.betr * self.zz + tau))
+            g3 = dbexp(self.p * self.zz) * erfc(rba * (self.betr * self.zz + tau))
             return a1 * (1.0 - g1 / 2.0 + (1 + self.p / z1) * g2 / 2.0) - self.p / z1 / 2.0 * g3
         elif self.modc in (1, 2): # flux concentration
             return (1.0 + z1 / self.p) * a1 * (2.0 - g1 - g2) / 2.0
@@ -845,10 +748,10 @@ class DetCDE:
         rbb = np.sqrt(self.p * tau / np.pi / self.betr)
         aa1 = self.p * (1.0 - u) * self.zz / 2.0
         bb1 = rba * (self.betr * self.zz - u * tau)
-        g1 = exf(aa1, bb1)
+        g1 = dbexp(aa1) * erfc(bb1)
         aa2 = self.p * (1.0 + u) * self.zz / 2.0
         bb2 = rba * (self.betr * self.zz + u * tau)
-        g2 = exf(aa2, bb2)
+        g2 = dbexp(aa2) * erfc(bb2)
 
         if self.modc in (3, 4): # third-type concentration
             if abs(self.dmu1 + dum) < self.ctol:
@@ -859,7 +762,7 @@ class DetCDE:
             else:
                 aa3=self.p * self.zz - (self.dmu1 + dum) * tau / self.betr
                 bb3 = rba * (self.betr * self.zz + tau)
-                g3 = exf(aa3, bb3)
+                g3 = dbexp(aa3) * erfc(bb3)
                 rbc = self.p / 2.0 / (self.dmu1 + dum)
                 return 1 / (1 + u) * g1 + 1 / (1 - u) * g2 +  rbc * g3
         else:
@@ -875,7 +778,7 @@ class DetCDE:
         
         if self.modc in (3, 4): # third-type concentration
             rbb = np.sqrt(bb)
-            g3 = exf(self.p * self.zz, rbb * (self.betr * (z1 + self.zz) + tau))
+            g3 = dbexp(self.p * self.zz) * erfc(rbb * (self.betr * (z1 + self.zz) + tau))
             return (g1 + g2) * rba - self.p / 2.0 * g3
         elif self.modc in (5, 6): # first-type concentration
             return (g1 - g2) * rba
@@ -890,8 +793,8 @@ class DetCDE:
         rba = np.sqrt(ba)
         br1 = (self.betr * self.zz - tau) / 2.0
         br2 = (self.betr * self.zz + tau) / 2.0
-        g1 = exf(0.0, rba * (self.betr * self.zz - tau))
-        g2 = exf(self.p * self.zz, rba * (self.betr * self.zz + tau))
+        g1 = erfc(rba * (self.betr * self.zz - tau))
+        g2 = dbexp(self.p * self.zz) * erfc(rba * (self.betr * self.zz + tau))
         
         if self.modc in (3, 4):  # third-type concentration
             g3 = dbexp(-ba * (self.betr * self.zz - tau) * (self.betr * self.zz - tau))
@@ -904,7 +807,7 @@ class DetCDE:
     def phi1(self, tau, level=11):
         """Calculate series in exponential BVP for equilibrium phase"""
         omom = self.a * self.b
-        c = self.tpulse[0] - self.b
+        c = self.pulse[0]['time'] - self.b
 
         phi1 = 0.0
         fn = 1.0
@@ -928,7 +831,7 @@ class DetCDE:
     def phi2(self, tau, level=11):
         """Calculate series in exponential BVP for nonequilibrium phase"""
         omom = self.a * self.b
-        c = self.tpulse[0] - self.b
+        c = self.pulse[0]['time'] - self.b
 
         phi2 = 0.0
         fn = 1.0

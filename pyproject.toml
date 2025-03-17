@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cxtfit"
+version = "1.0"
+description = "One-Dimensional  Deterministic or Stochastic Equilibrium and Nonequilibrium Convective Dispersive Equations"
+authors = [
+    { name = "Hua Zhang", email = "hzhang4@gmail.com" }
+]
+readme = "README.md"
+license = { text = "MIT" }
+dependencies = [
+    "numpy",
+    "scipy",
+    "pandas",
+]
+
+[project.urls]
+repository = "https://github.com/hzhang4/cxtfit"
+
+[tool.setuptools.packages.find]
+include = ["cxtfit", "cxtfit.*"]

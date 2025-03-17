@@ -1,6 +1,6 @@
 import numpy as np
 from .detcde import DetCDE,dbexp
-# from scipy.integrate import quad
+from scipy.integrate import quad
 
 def xlnprob(x, avex, sdlnx):
     """
@@ -29,7 +29,6 @@ def limit(x, sdlnx, level=15, cmin = 1.0e-7):
     Calculate integration limits for a log-normal distribution
     for stochastic models using Newton-Raphson method.
     """
-    # print(f'X {x} SDLNX  {sdlnx}')
     xlnm = np.log(x) - 0.5 * sdlnx * sdlnx
     xmod = dbexp(xlnm - sdlnx * sdlnx)
     xmin1 = max(1.0e-5, xmod - xmod * sdlnx)
@@ -38,7 +37,6 @@ def limit(x, sdlnx, level=15, cmin = 1.0e-7):
     # Calculate XMIN
     for i in range(level):
         clst = xlnprob(xmin1, x, sdlnx)
-        # print(f'I {i} CLST {clst} XMIN {xmin1} ')
         if clst < cmin:
             break
         slope = -clst / (2.0 * sdlnx * sdlnx * xmin1) * (np.log(xmin1) - xlnm + sdlnx * sdlnx)
@@ -53,161 +51,61 @@ def limit(x, sdlnx, level=15, cmin = 1.0e-7):
     # Calculate XMAX
     for i in range(level):
         clst = xlnprob(xmax1, x, sdlnx)
-        # print(f'I {i} CLST {clst} XMIN {xmax1} ')
         if clst < cmin:
             break
         slope = -clst / (2.0 * sdlnx * sdlnx * xmax1) * (np.log(xmax1) - xlnm + sdlnx * sdlnx)
         xmax1 -= clst / slope
 
     if i == level - 1:
-        raise RuntimeError("WARNING ! OUT OF RANGE (UPPER LIMIT)")
+        raise RuntimeError("WARNING ! OUT OF RANGE (LOWER LIMIT)")
 
     return xmin1, xmax1
 
-def limit2(func, aa, bb, tfac = 1.2, ttol = 1.0e-3, miter = 100):
-    t0 = aa
-    t1 = bb
-
-    tstep = 1.0
-    cm0, _ = func(t0)
-    if cm0 == 0: 
-        for _ in range(miter): # exponential search
-            t0 += tstep
-            cm0, _ = func(t0)
-            if (cm0 > 0): 
-                tmin = t0 - tstep
-                while t0 - tmin > ttol: # binary search
-                    tmid = 0.5 * (t0 + tmin)
-                    cm0, _ = func(tmid)
-                    if cm0 > 0:
-                        t0 = tmid
-                    else:
-                        tmin = tmid
-                break
-            tstep *= tfac
-    
-    tstep = 1.0
-    cm0, _ = func(t1)
-    if cm0 == 0:
-        for _ in range(miter): # exponential search
-            t1 -= tstep
-            cm0, _ = func(t1)
-            if cm0 > 0: 
-                tmax = t1 + tstep
-                while tmax - t1 > ttol: # binary search
-                    tmid = 0.5 * (t1 + tmax)
-                    cm0, _ = func(tmid)
-                    if cm0 > 0:
-                        t1 = tmid
-                    else:
-                        tmax = tmid
-                break
-            tstep *= tfac
-
-    return t0, t1
-
-def chebylog2(func, aa, bb, icheb=1, mm=8, stopch=1.0e-3, level=10, ctol=1.0e-10):
-    """
-    Perform integration of F(x) between log-transformed A and B 
-    using M-point Gauss-Chebyshev quadrature formula.
-
-    Args:
-        func (callable): The function to integrate.
-        aa (float): Lower limit of integration.
-        bb (float): Upper limit of integration.
-        icheb (int): If 0, use fixed number of integration points. 
-                     If 1, increase number of points using stop criteria.
-        mm (int): Number of integration points.
-        stopch (float): The stopping criterion for the integration.
-        level (int): The maximum number of iterations for adaptive integration.
-        ctol (float): The tolerance for the integration.
-
-    Returns:
-        float: The approximate value of the integral.
-    """
-    a = np.log(aa)
-    b = np.log(bb)
-    summ1 = 0.0
-    summ2 = 0.0
-    m=mm
-    if icheb != 1:
-        for i in range(1, m + 1):
-            z1 = np.cos((2 * (i - 1) + 1) * np.pi / (2 * m))
-            x1 = (z1 * (b - a) + b + a) / 2.0
-            dx1 = np.exp(x1)
-            cm1, cm2 = func(dx1) 
-            # print(f'{dx1} {cm1} {cm2}')
-
-            summ1 += dx1 * cm1 * np.sqrt(1.0 - z1 * z1)
-            summ2 += dx1 * cm2 * np.sqrt(1.0 - z1 * z1)
-        g = (b - a) * np.pi / (2 * m)
-        return g * summ1, g * summ2
-    
-    area1 = 0.0    
-    for _ in range(level):
-        summ1 = 0.0
-        summ2 = 0.0
-        for i in range(1, m + 1):
-            z1 = np.cos((2 * (i - 1) + 1) * np.pi / (2 * m))
-            x1 = (z1 * (b - a) + b + a) / 2.0
-            dx1 = np.exp(x1)
-            cm1, cm2 = func(dx1) 
-
-            summ1 += dx1 * cm1 * np.sqrt(1.0 - z1 * z1)
-            summ2 += dx1 * cm2 * np.sqrt(1.0 - z1 * z1)
-        g = (b - a) * np.pi / (2 * m)
-        area = g * summ1
-        area2 = g * summ2
-        if abs(area) < ctol:
-            return area, area2
-
-        error = abs(area1 - area) / area
-        if error < stopch:
-            # print(f'CHEBYLOG2: m = {m} area = {area} area1 = {area1} error = {error}')
-            return area, area2
-        else:
-            area1 = area
-            m *= 2
-    raise ValueError("chebylog2 Failed to converge")
-
+# Converted from functions in STOCDE.FOR original Fortran code
 class StoCDE(DetCDE):
     def StoCDE(self):
         """
         Stochastic models -- emsemble averages concentration
         """
-        self.mcon = 1 # Phase 1 Concentration
         if self.mstoch in [1, 3]: # varaible velocity
-            # print(f'\n\nInitital <C> VMIN = {self.vmin} VMAX = {self.vmax}')
-            # vv0,vv1=limit2(self.conprov, self.vmin, self.vmax)
-            # print(f'\n\nIntegration VMIN = {vv0} VMAX = {vv1}')
-            # print(f'T = {self.tt} z = {self.zz} v ={self.v}')
-            # c1, c12 = chebylog2(self.conprov, vv0, vv1)
-            c1, c12 = chebylog2(self.conprov,self.vmin,self.vmax)
-
+            mcon = 1 # Phase 1 Concentration
+            msd = 0 # Ensemble averages <C>
+            c1, _ = quad(self.conprov, self.vmin, self.vmax, args=(mcon,msd))
+            msd = 1 # Ensemble averages <C*C>
+            c12, _ = quad(self.conprov, self.vmin, self.vmax, args=(mcon, msd))
             if self.modc in [4, 6] or self.mode in [3, 5]: # total resident concentration or equilibrium model
                 c2 = 0.0
                 c22 = 0.0
             else : # nonequilibrium model
-                self.mcon  = 2
-                # c2, c22 = chebylog2(self.conprov, vv0, vv1)
-                c2, c22 = chebylog2(self.conprov, self.vmin, self.vmax)
-            # print(f'c1 = {c1} c2 = {c2} c12 = {c12} c22 = {c22}')
-
+                mcon  = 2
+                msd = 0
+                c2, _ = quad(self.conprov, self.vmin, self.vmax, args=(mcon,msd))
+                msd = 1
+                c22, _ = quad(self.conprov, self.vmin, self.vmax, args=(mcon, msd))
         elif self.mstoch in [2, 4]: # variable Y
-            c1, c12 = chebylog2(self.conproy, self.ymin, self.ymax)
+            mcon = 1 # Phase 1 Concentration
+            msd = 0 # Ensemble averages <C>
+            c1, _ = quad(self.conproy, self.ymin, self.ymax, args=(mcon,msd))
+            msd = 1
+            c12, _ = quad(self.conproy, self.ymin, self.ymax, args=(mcon, msd))
+
             if self.modc in [4, 6] or self.mode in [3,5]: # total resident concentration or equilibrium model
                 c2 = 0.0
                 c22 = 0.0
             else :
-                self.mcon = 2 # Phase 2 Concentration
-                c2, c22 = chebylog2(self.conproy, self.ymin, self.ymax)
+                mcon = 2 # Phase 2 Concentration
+                msd = 0 # Ensemble averages <C>
+                c2, _ = quad(self.conproy, self.ymin, self.ymax, args=(mcon, msd))
+                msd = 1 # Ensemble averages <C*C>
+                c22, _ = quad(self.conproy, self.ymin, self.ymax, args=(mcon, msd))
         else:
             raise ValueError("Invalid value for MSTOCH")
 
         return c1, c2, c12-c1*c1, c22-c2*c2
     
-    def conprov(self, vv):
+    def conprov(self, vv, mcon = 1, msd = 0):
         """Calculate argument of stochastic models for a log-normal velocity distribution"""
+
         avev = self.v
         ttt = self.tt
 
@@ -221,15 +119,16 @@ class StoCDE(DetCDE):
         sdmu1 = self.dmu1
         sdmu2 = self.dmu2
         spulse = self.cpulse[0]
-        stpulse = self.tpulse.copy()
-        sgamma1 = self.gamma1.copy()
-        sgamma2 = self.gamma2.copy()
+        stpulse = [i for i in self.tpulse]
+        sgamma1 = [i for i in self.gamma1]
+        sgamma2 = [i for i in self.gamma2]
 
-        # ASSIGN NONDIMENTIONAL PARAMETERS TO EACH STREAM TUBE
         if abs(vv) < 1.0e-30:
             vv = avev * 1.0e-30
 
+        self.v = vv
         self.tt = ttt/avev * vv
+        # ASSIGN NONDIMENTIONAL PARAMETERS TO EACH STREAM TUBE
 
         if self.mode in [5, 6]:
             m56 = 1
@@ -281,10 +180,9 @@ class StoCDE(DetCDE):
         self.tpulse = [i/ avev * vv for i in stpulse]
         self.gamma1 = [i / vv * avev for i in sgamma1]
         self.gamma2 = [i / vv * avev for i in sgamma2]
-
               
         if self.modb == 1 and self.massst != 1:
-            self.cpulse[0] = spulse * vv / avev
+            self.cpulse[0] = self.cpulse[0] / avev * vv
         if self.modb == 3 and self.massst == 1:
             self.tpulse[1] = stpulse[1]
 
@@ -292,9 +190,9 @@ class StoCDE(DetCDE):
 
         if self.modc in [4, 6]: # total resident concentration
             c = c1 * self.beta * self.r + c2 * (1.0 - self.beta) * self.r
-        elif self.mcon == 1:
+        elif mcon == 1:
             c = c1
-        elif self.mcon == 2:
+        elif mcon == 2:
             if self.nredu == 0:
                 c = c2 * self.dk
             else:
@@ -312,10 +210,6 @@ class StoCDE(DetCDE):
         else:
             prob = xlnprob(vv, avev, self.sdlnv)
 
-        # print(f'{self.tt} {self.zz} {self.v} {self.d} {self.p} {self.r}')
-        # print(f'{self.tpulse}')
-        # print(f'{self.cpulse}')
-        # print(f'{vv} {c1} {c2} {prob}')
         self.v = avev
         self.tt = ttt
         self.p = sp
@@ -329,23 +223,24 @@ class StoCDE(DetCDE):
         self.dmu2 = sdmu2
 
         self.cpulse[0] = spulse
-        self.tpulse = stpulse.copy()
-        self.gamma1 = sgamma1.copy()
-        self.gamma2 = sgamma2.copy()
+        self.tpulse = [i for i in stpulse]
+        self.gamma1 = [i for i in sgamma1]
+        self.gamma2 = [i for i in sgamma2]
 
-        if self.modc == 2: # <C> field scale flux average concentration
-            cmu1 = prob * c * vv / avev
-        else:
-            cmu1 = prob * c
-        if self.modc == 2:
-            cmu2 = prob * c * c * vv * vv / avev / avev
-        else:
-            cmu2 = prob * c * c
-
-        return cmu1, cmu2
+        if msd == 0: # <C>
+            if self.modc == 2: # <C> field scale flux average concentration
+                return prob * c * vv / avev
+            else:
+                return prob * c
+        else: # <C*C>
+            if self.modc == 2:
+                return prob * c * c * vv * vv / avev / avev
+            else:
+                return prob * c * c
         
-    def conproy(self, y):
+    def conproy(self, y, mcon = 1, msd = 0):
         """Calculate argument of stochastic models for a log-normal distribution of another parameter (v, D, K, alpha)"""
+        mmode = self.mode
         sp = self.p
         sdk = self.dk
         sdd = self.d
@@ -381,23 +276,27 @@ class StoCDE(DetCDE):
             c1, c2 = self.detcde()
             if self.modc in [4, 6]: # total resident concentration
                 c = c1 * self.beta * self.r + c2 * (1.0 - self.beta) * self.r
-            elif self.mcon == 1:
+            elif mcon == 1:
                 c = c1
-            elif self.mcon == 2:
+            elif mcon == 2:
                 if self.nredu == 0:
                     c = c2 * self.dk
                 else:
                     c = c2
 
-            cmu1 = prob * c
-            cmu2 = prob * c * c
+            if msd == 0:
+                conproy = prob * c
+            else:
+                conproy = prob * c * c
 
         if self.mstoch == 4:
-            cmu1, cmu2 = chebylog2(self.conprov, self.vmin, self.vmax)
+            c, _ = quad(self.conprov, self.vmin, self.vmax, args=(mcon, msd))
             if self.mcorr == 0:
-                cmu1 = cmu1 * prob
-                cmu2 = cmu2 * prob
+                conproy = c * prob
+            elif self.mcorr == 2:
+                conproy = c
 
+        self.mode = mmode
         self.p = sp
         self.dk = sdk
         self.d = sdd
@@ -408,4 +307,4 @@ class StoCDE(DetCDE):
         self.dmu1 = sdmu1
         self.dmu2 = sdmu2
 
-        return cmu1, cmu2
+        return conproy
