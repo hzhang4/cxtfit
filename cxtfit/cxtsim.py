@@ -1,5 +1,7 @@
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
+
 from scipy.optimize import least_squares
 import scipy.stats as stats
 
@@ -99,7 +101,7 @@ class CXTsim(StoCDE):
                  ilmt=0,
                  mass=0,
                  massst=0,
-                 mneq=1,
+                 mneq=0,
                  mdeg=0,
                  phim=0,
                  rhoth=1.0,
@@ -125,7 +127,7 @@ class CXTsim(StoCDE):
         self.mit = mit
         self.ilmt = ilmt
         self.mass = mass
-        self.massst=massst,
+        self.massst=massst
         self.mneq = mneq
         self.mdeg = mdeg
         self.phim = phim
@@ -165,6 +167,8 @@ class CXTsim(StoCDE):
         else:
             self.npulse = 0
             self.pulse = []
+            self.tpulse = [0]
+            self.cpulse = [0]
     
     def __set_ivp(self,cini,verbose=False) :
         """ Check and set initial value problem (BVP) Input """
@@ -208,7 +212,7 @@ class CXTsim(StoCDE):
     def __set_obs(self,obsdata,verbose=False) :
         """ dataframe of observed and simulated data """
         self.nob = obsdata.shape[0] 
-        self.cxtdata = obsdata 
+        self.cxtdata = obsdata.copy() 
     
     # Converted from CHECK function in DATA.FOR Fortran code
     def __set_parm(self,parms,verbose=False):
@@ -216,7 +220,7 @@ class CXTsim(StoCDE):
 
         # total number of variable parameters
         self.nvar = parms.shape[1] 
-        self.parms = parms 
+        self.parms = parms.copy()
 
         self.binit = self.parms.loc['binit'].to_dict()
         self.bfit = self.parms.loc['bfit'].to_dict()
@@ -236,9 +240,6 @@ class CXTsim(StoCDE):
                 self.bfit['mu2'] = 0
             elif self.mdeg == 3: 
                 self.bfit['mu1'] = 0
-
-        if self.mode <= 2:
-            return
 
         #   ----- DISPERSION COEFFICIENT FOR STOCHASTIC MODEL FOR MODE 3,4,8--------
         self.modd = 0
@@ -284,7 +285,7 @@ class CXTsim(StoCDE):
         self.nfit = sum(self.bfit.values())
         if self.nfit and verbose:
             print(f"Initial parameters: {self.binit}")
-            print(f"Number of parameters to fit: {self.nfit.astype(int)}")
+            print(f"Number of parameters to fit: {int(self.nfit)}")
             print(f"Parameters to fit: {[key for key, flag in self.bfit.items() if flag == 1]}")
 
     def __set_const(self, **kwargs):
@@ -316,7 +317,7 @@ class CXTsim(StoCDE):
     def residuals(self,params):
         """Residuals function for least squares optimization""" 
         cpar = self.full_parms(params) 
-        
+        # print(f"Parameters estimates \n {cpar}")
         csim,_,_,_ = self.model(cpar)
 
         return csim - self.cobs
@@ -325,12 +326,16 @@ class CXTsim(StoCDE):
     # the scipy.optimize.leastsq function to fit model to data
     def curvefit(self,verbose=False):
         """ Curve fitting using least squares optimization """
+        if 'cobs' in self.cxtdata.columns:
+            self.cobs = self.cxtdata['cobs'].values
+            if self.nfit > self.nob:
+                raise ValueError(f"Number of parameters to fit {self.nfit} exceeds number of observations {self.nob}")
+        else:
+            raise ValueError("Observed data 'cobs' not found in the input dataframe.")
         
-        if self.nfit > self.nob:
-            raise ValueError(f"Number of parameters to fit {self.nfit} exceeds number of observations {self.nob}")
-
-        self.cobs = self.cxtdata['cobs'].values
         initial_guess = [self.binit[key] for key, flag in self.bfit.items() if flag == 1]
+        if verbose:
+            print(f"Initial parameters estimates \n {self.parms}")
         
         if self.ilmt : # Use bounds
             bmax = self.parms.loc['bmax'].to_dict()
@@ -340,17 +345,16 @@ class CXTsim(StoCDE):
 
             # Perform the least squares optimization, default setting works great
             leastsq = least_squares(self.residuals, initial_guess, 
-                                        bounds=(lower_bounds, upper_bounds), verbose=verbose)
+                                        bounds=(lower_bounds, upper_bounds), diff_step=1e-3, verbose=verbose)
         else:
-            leastsq = least_squares(self.residuals, initial_guess, verbose=verbose)
+            leastsq = least_squares(self.residuals, initial_guess, diff_step=1e-3, verbose=verbose)
 
-        if verbose:
-            self.fit_stats(leastsq)
-
-        # Update the simulated data with the optimized parameters
         self.bfinal = self.full_parms(leastsq.x)
         if verbose:
             print(f"Final parameters \n {self.bfinal}")
+
+        if verbose:
+            self.fit_stats(leastsq)
 
         self.direct(self.bfinal, verbose=verbose)
         return
@@ -457,10 +461,10 @@ class CXTsim(StoCDE):
                 self.zz = rec['z']
 
             if self.mode ==1:
-                c1,c2 = self.detcde()
+                c1,c2 = self.DetCDE()
                 if c1 > self.ctol: csim1[i]=c1 
             elif self.mode==2:
-                c1,c2 = self.detcde()
+                c1,c2 = self.DetCDE()
                 if self.inverse == 1 and (self.modc == 4 or self.modc == 6):
                     c1 = self.beta * self.r * c1
                     c2 = (1 - self.beta) * self.r * c2
@@ -500,9 +504,9 @@ class CXTsim(StoCDE):
         if self.nredu in (0,1):
             # CHANGE pulse TO DIMENSIONLESS VARIABLES
             if self.modb in (3,4):
-                self.tpulse = [pul['time'] * self.v / self.zl for pul in self.pulse]
+                self.tpulse = [x * self.v / self.zl for x in self.tpulse]
             if (self.modb == 5):
-                self.tpulse[0] = self.pulse[0]['time'] / self.v * self.zl
+                self.tpulse[0] = self.tpulse[0] / self.v * self.zl
 
             # CHANGE gamma TO DIMENSIONLESS VARIABLES FOR MODE=1,3,5
             if self.mode in (1, 3, 5) and self.modp in (1, 2, 4) :
@@ -594,3 +598,62 @@ class CXTsim(StoCDE):
                 self.ymin, self.ymax = limit(self.y, self.sdlny)
                 # print(self.ymin, self.ymax)
         return
+    
+    def plot_btc(self,**kwargs):
+        """ Plot breakthrough curve """
+        if 'cobs' in self.cxtdata.columns:
+            self.cxtdata.plot.scatter(x='t', y='cobs', label='Observed',**kwargs)
+
+        if self.mode == 1 : # One phase
+            self.cxtdata.plot(x='t', y='csim', label='Phase 1', **kwargs)
+        elif self.mode == 2 : # Two phase
+            self.cxtdata.plot(x='t', y='csim', label='Phase 1', **kwargs)
+            self.cxtdata.plot(x='t', y='csim2', label='Phase 2', 
+                              linestyle='dashed', **kwargs)
+        elif self.mode in (3, 5) :
+            self.cxtdata.plot(x='t', y='csim', label='Phase 1', **kwargs)
+            plt.fill_between(self.cxtdata['t'], 
+                             self.cxtdata['csim'] - self.cxtdata['cvar'], 
+                             self.cxtdata['csim'] + self.cxtdata['cvar'], 
+                             alpha=0.2, label='Phase 1 ± Variance',**kwargs)
+        elif self.mode in (4,6,8) :
+            self.cxtdata.plot(x='t', y='csim', label='Phase 1', **kwargs)
+            plt.fill_between(self.cxtdata['t'], 
+                             self.cxtdata['csim'] - self.cxtdata['cvar'], 
+                             self.cxtdata['csim'] + self.cxtdata['cvar'], 
+                             alpha=0.2, label='Phase 1 ± Variance',**kwargs)
+            self.cxtdata.plot(x='t', y='csim2', label='Phase 2',
+                              linestyle='dashed', **kwargs)
+            plt.fill_between(self.cxtdata['t'], 
+                             self.cxtdata['csim2'] - self.cxtdata['cvar2'], 
+                             self.cxtdata['csim2'] + self.cxtdata['cvar2'], 
+                             alpha=0.2, label='Phase 2 ± Variance',**kwargs)
+        
+    def plot_profile(self,**kwargs):
+        """ Plot concentration profile """
+        if 'cobs' in self.cxtdata.columns:
+            self.cxtdata.plot.scatter(x='z', y='cobs', label='Observed', **kwargs)
+        if self.mode == 1 : # One phase
+            self.cxtdata.plot(x='z', y='csim', label='Phase 1', **kwargs)
+        elif self.mode == 2 : # Two phase
+            self.cxtdata.plot(x='z', y='csim', label='Phase 1', **kwargs)
+            self.cxtdata.plot(x='z', y='csim2', label='Phase 2',
+                              linestyle='dashed', **kwargs)
+        elif self.mode in (3, 5) :
+            self.cxtdata.plot(x='z', y='csim', label='Phase 1', **kwargs)
+            plt.fill_between(self.cxtdata['z'], 
+                             self.cxtdata['csim'] - self.cxtdata['cvar'], 
+                             self.cxtdata['csim'] + self.cxtdata['cvar'], 
+                             alpha=0.2, label='Phase 1 ± Variance',**kwargs)
+        elif self.mode in (2,4,6,8) :
+            self.cxtdata.plot(x='z', y='csim', label='Phase 1', **kwargs)
+            plt.fill_between(self.cxtdata['z'], 
+                             self.cxtdata['csim'] - self.cxtdata['cvar'], 
+                             self.cxtdata['csim'] + self.cxtdata['cvar'], 
+                             alpha=0.2, label='Phase 1 ± Variance',**kwargs)
+            self.cxtdata.plot(x='z', y='csim2', label='Phase 2', 
+                              linestyle='dashed', **kwargs)
+            plt.fill_between(self.cxtdata['z'], 
+                             self.cxtdata['csim2'] - self.cxtdata['cvar2'], 
+                             self.cxtdata['csim2'] + self.cxtdata['cvar2'], 
+                             alpha=0.2, label='Phase 2 ± Variance',**kwargs)

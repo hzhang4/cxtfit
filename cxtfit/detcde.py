@@ -1,6 +1,6 @@
 import numpy as np
 # from scipy.special import erfc,i0,i1
-# from scipy.integrate import quad
+from scipy.integrate import quad
 
 def dbexp(x):
     if x < -100:
@@ -285,12 +285,9 @@ class DetCDE:
                     if ttt <= 0 :
                         return c1, c2
                     mc = 1
-                    a1 = chebycon(self.ctran, tmin, tmax, mc)
-                    # a1, _ = quad(self.cbj, 0, ttt, args=(ttt,mc))
+                    a1, _ = quad(self.cbj, 0, ttt, args=(ttt,mc))
                     mc = 2
-                    # a2, _ = quad(self.cbj, 0, ttt, args=(ttt,mc))
-                    a2 = chebycon(self.ctran, tmin, tmax, mc)
-
+                    a2, _ = quad(self.cbj, 0, ttt, args=(ttt,mc))
                 if i == 0:
                     c1 = self.cpulse[i] * a1
                     c2 = self.cpulse[i] * a2
@@ -399,11 +396,11 @@ class DetCDE:
             a1 = 0.0
         else:
             mc = 1
-            a1 = chebycon(self.civp, 0.0, self.tt, mc)
-            # a1, _ = quad(self.civp, 0.0, self.tt, args=(mc,))
+            # a1 = chebycon(self.civp, 0.0, self.tt, mc)
+            a1, _ = quad(self.civp, 0.0, self.tt, args=(mc,))
             mc = 2
-            a2 = chebycon(self.civp, 0.0, self.tt, mc)
-            # a2, _ = quad(self.civp, 0.0, self.tt, args=(mc,))
+            # a2 = chebycon(self.civp, 0.0, self.tt, mc)
+            a2, _ = quad(self.civp, 0.0, self.tt, args=(mc,))
 
         mcc0 = self.cc0(self.tt)
         mcc1 = self.cc1(self.tt)

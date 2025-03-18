@@ -106,7 +106,7 @@ def limit2(func, aa, bb, tfac = 1.2, ttol = 1.0e-3, miter = 100):
 
     return t0, t1
 
-def chebylog2(func, aa, bb, icheb=1, mm=8, stopch=1.0e-3, level=10, ctol=1.0e-10):
+def chebylog2(func, aa, bb, icheb=0, mm=100, stopch=1.0e-3, level=10, ctol=1.0e-10):
     """
     Perform integration of F(x) between log-transformed A and B 
     using M-point Gauss-Chebyshev quadrature formula.
@@ -136,7 +136,6 @@ def chebylog2(func, aa, bb, icheb=1, mm=8, stopch=1.0e-3, level=10, ctol=1.0e-10
             x1 = (z1 * (b - a) + b + a) / 2.0
             dx1 = np.exp(x1)
             cm1, cm2 = func(dx1) 
-            # print(f'{dx1} {cm1} {cm2}')
 
             summ1 += dx1 * cm1 * np.sqrt(1.0 - z1 * z1)
             summ2 += dx1 * cm2 * np.sqrt(1.0 - z1 * z1)
@@ -144,7 +143,7 @@ def chebylog2(func, aa, bb, icheb=1, mm=8, stopch=1.0e-3, level=10, ctol=1.0e-10
         return g * summ1, g * summ2
     
     area1 = 0.0    
-    for _ in range(level):
+    for k in range(level):
         summ1 = 0.0
         summ2 = 0.0
         for i in range(1, m + 1):
@@ -158,12 +157,12 @@ def chebylog2(func, aa, bb, icheb=1, mm=8, stopch=1.0e-3, level=10, ctol=1.0e-10
         g = (b - a) * np.pi / (2 * m)
         area = g * summ1
         area2 = g * summ2
+        # print(f'CHEBYLOG2: iteration = {k} m = {m} area = {area} area2 = {area2}')
         if abs(area) < ctol:
             return area, area2
 
         error = abs(area1 - area) / area
         if error < stopch:
-            # print(f'CHEBYLOG2: m = {m} area = {area} area1 = {area1} error = {error}')
             return area, area2
         else:
             area1 = area
@@ -177,11 +176,6 @@ class StoCDE(DetCDE):
         """
         self.mcon = 1 # Phase 1 Concentration
         if self.mstoch in [1, 3]: # varaible velocity
-            # print(f'\n\nInitital <C> VMIN = {self.vmin} VMAX = {self.vmax}')
-            # vv0,vv1=limit2(self.conprov, self.vmin, self.vmax)
-            # print(f'\n\nIntegration VMIN = {vv0} VMAX = {vv1}')
-            # print(f'T = {self.tt} z = {self.zz} v ={self.v}')
-            # c1, c12 = chebylog2(self.conprov, vv0, vv1)
             c1, c12 = chebylog2(self.conprov,self.vmin,self.vmax)
 
             if self.modc in [4, 6] or self.mode in [3, 5]: # total resident concentration or equilibrium model
@@ -189,9 +183,7 @@ class StoCDE(DetCDE):
                 c22 = 0.0
             else : # nonequilibrium model
                 self.mcon  = 2
-                # c2, c22 = chebylog2(self.conprov, vv0, vv1)
                 c2, c22 = chebylog2(self.conprov, self.vmin, self.vmax)
-            # print(f'c1 = {c1} c2 = {c2} c12 = {c12} c22 = {c22}')
 
         elif self.mstoch in [2, 4]: # variable Y
             c1, c12 = chebylog2(self.conproy, self.ymin, self.ymax)
@@ -259,7 +251,7 @@ class StoCDE(DetCDE):
             self.dk = (vv / avev) ** (-self.sdlnk / self.sdlnv) * sdk * dbexp(0.5 * (-self.sdlnv - self.sdlnk) * self.sdlnk)
             self.r = 1.0 + self.rhoth * self.dk
 
-        if self.mneq == 1:
+        if self.mode in [4, 6, 8] and self.mneq == 1:
             self.dmu2 = self.dmu2 / (sr - 1.0) * (self.r - 1.0)
             self.beta = 1.0 / self.r
             self.omega = self.omega / (sr - 1.0) * (self.r - 1.0)
@@ -281,7 +273,6 @@ class StoCDE(DetCDE):
         self.tpulse = [i/ avev * vv for i in stpulse]
         self.gamma1 = [i / vv * avev for i in sgamma1]
         self.gamma2 = [i / vv * avev for i in sgamma2]
-
               
         if self.modb == 1 and self.massst != 1:
             self.cpulse[0] = spulse * vv / avev
