@@ -530,3 +530,58 @@ def test_fig7_8(input_path):
     fig,ax = plt.subplots()
     for simcase in sims.simcases:
         simcase.plot_btc(ax=ax)
+
+def test_fig7_9(input_path):
+    sims = CXTfit.load(f'{input_path}/FIG7-9A.IN',verbose = False)
+    sims.run(verbose=False)
+    fig,ax = plt.subplots()
+    for simcase in sims.simcases:
+        simcase.plot_btc(ax=ax)
+
+    sims = CXTfit.load(f'{input_path}/FIG7-9B.IN',verbose = False)
+    sims.run(verbose=False)
+    fig,ax = plt.subplots()
+    for simcase in sims.simcases:
+        simcase.plot_btc(ax=ax)
+
+def test_fig7_10(input_path):
+    sims = CXTfit.load(f'{input_path}/FIG7-10.IN',verbose = False)
+    sims.run(verbose=False)
+    fig,ax = plt.subplots()
+    for simcase in sims.simcases:
+        simcase.plot_btc(ax=ax)
+
+def test_fig7_11(input_path):
+    sims = CXTfit.load(f'{input_path}/FIG7-11.IN',verbose = False)
+    sims.run(verbose=False)
+    fig,ax = plt.subplots()
+    for simcase in sims.simcases:
+        simcase.plot_btc(ax=ax)
+
+def test_fig7_12(input_path):
+    sims = CXTfit.load(f'{input_path}/FIG7-12.IN',verbose = False)
+    sims.run(verbose=False)
+    fig,ax = plt.subplots()
+    for simcase in sims.simcases:
+        simcase.plot_btc(ax=ax)
+
+def test_fig7_13(input_path):
+    sims = CXTfit.load(f'{input_path}/FIG7-13.IN',verbose = False)
+    sims.run(verbose=False)
+    fig,ax = plt.subplots()
+    for simcase in sims.simcases:
+        simcase.plot_btc(ax=ax)
+
+def test_fig7_14(input_path):
+    sims = CXTfit.load(f'{input_path}/FIG7-14.IN',verbose = False)
+    sims.run(verbose=False)
+    fig,ax = plt.subplots()
+    for simcase in sims.simcases:
+        simcase.plot_btc(ax=ax)
+
+def test_fig7_15(input_path):
+    sims = CXTfit.load(f'{input_path}/FIG7-15.IN',verbose = False)
+    sims.run(verbose=False)
+    fig,ax = plt.subplots()
+    for simcase in sims.simcases:
+        simcase.plot_btc(ax=ax)

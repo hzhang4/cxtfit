@@ -161,56 +161,56 @@ class CXTsim(StoCDE):
         """ Check and set boundary value problem (BVP) Input """
         if self.modb in (1,2,3,4,5,6) :
             self.npulse = len(pulse)
-            self.pulse = pulse
             self.tpulse = [item['time'] for item in pulse]
             self.cpulse = [item['conc'] for item in pulse]
         else:
             self.npulse = 0
-            self.pulse = []
             self.tpulse = [0]
             self.cpulse = [0]
     
     def __set_ivp(self,cini,verbose=False) :
         """ Check and set initial value problem (BVP) Input """
         if self.modi in (1,2,3,4) :
-            self.cini = cini
             self.nini = len(cini)
+            self.cini = [item['conc'] for item in cini]
+            self.zini = [item['z'] for item in cini]
         else :
             self.nini = 0
-            self.cini = []
+            self.cini = [0]
+            self.zini = [0]
     
     def __set_pvp(self, prodval1,prodval2,mpro,verbose=False) :
         """ Check and set production value problem (PVP) Input """
         if self.modp in (1,2,3) :
-            self.prodval1 = prodval1
             self.npro1 = len(prodval1)
+            self.gamma1 = [item['gamma'] for item in prodval1]
+            self.zpro1 = [item['zpro'] for item in prodval1]
             
             if self.mode in (2,4,6,8) : #NONEQUILIBRIUM MODEL
                 self.mpro = mpro
                 if self.mpro == 0: #SAME CONDITION FOR PHASE 1 & 2
-                    self.prodval2 = prodval1
                     self.npro2 = self.npro1
+                    self.gamma2 = [item['gamma'] for item in prodval1]
+                    self.zpro2 = [item['zpro'] for item in prodval1]
                 else: #DIFFERENT CONDITION FOR PHASE 1 & 2
-                    self.prodval2 = prodval2
                     self.npro2 = len(prodval2)
+                    self.gamma2 = [item['gamma'] for item in prodval2]
+                    self.zpro2 = [item['zpro'] for item in prodval2]
             else: #EQUILIBRIUM MODEL
                 self.npro2 = 0
-                self.prodval2 = []
                 self.mpro = 0
+                self.gamma2 = [0]
+                self.zpro2 = [0]
         else : #NO PRODUCTION
             self.npro1 = 0
-            self.prodval1 = []
+            self.gamma1 = [0]
+            self.zpro1 = [0]
             self.npro2 = 0
-            self.prodval2 = []
             self.mpro = 0
-        
-        self.gamma1 = [item['gamma'] for item in self.prodval1]
-        self.zpro1 = [item['zpro'] for item in self.prodval1]
-        self.gamma2 = [item['gamma'] for item in self.prodval2]
-        self.zpro2 = [item['zpro'] for item in self.prodval2]
-    
+            self.gamma2 = [0]
+            self.zpro2 = [0]
+
     def __set_obs(self,obsdata,verbose=False) :
-        """ dataframe of observed and simulated data """
         self.nob = obsdata.shape[0] 
         self.cxtdata = obsdata.copy() 
     

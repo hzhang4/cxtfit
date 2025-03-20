@@ -198,9 +198,8 @@ class DetCDE:
         """Calculate deterministic equilibrium & nonequilibrium CDE"""      
         self.betr = self.beta * self.r
         omegamu2 = self.omega + self.dmu2
-        mods = self.mode % 2
 
-        if mods == 1 or omegamu2 < self.ctol: 
+        if self.mode in (1,3,5) or omegamu2 < self.ctol: 
             self.a = 0.0
             self.da = 0.0
             self.cx = 0.0
@@ -209,7 +208,7 @@ class DetCDE:
             self.da = self.omega * self.dmu2 / omegamu2
             self.cx = self.omega / omegamu2
 
-        if mods == 1 or (self.beta >= 0.9999999 and self.omega < self.ctol) or omegamu2 < self.ctol:
+        if self.mode in (1,3,5) or (self.beta >= 0.9999999 and self.omega < self.ctol) or omegamu2 < self.ctol:
             self.b = 0.0
         else:
             self.b = omegamu2 / (self.r -self.betr)
@@ -225,7 +224,7 @@ class DetCDE:
         cpro2 = cpro2 if cpro2 > self.ctol else 0.0
 
         c1 = cbou1 + cint1 + cpro1
-        if mods == 0: # nonequilibrium CDE
+        if self.mode in (2,4,6,8): # nonequilibrium CDE
             c2 = cbou2 + cint2 + cpro2
         else: # equilibrium CDE
             c2 = 0.0
@@ -234,7 +233,6 @@ class DetCDE:
     
     def bound(self):
         """Boundary value problem (BVP) for equilibrium and nonequilibrium CDE"""
-        mods = self.mode % 2
 
         if self.modb == 0 or self.tt <= self.dtmin: # Zero input or initial time
             return 0.0, 0.0
@@ -246,7 +244,7 @@ class DetCDE:
 
             c1 = self.cc0(self.tt) * dbexp(-self.omega * self.tt / self.betr)
             # print(self.cpulse[0],self.v, self.zl,bmass)
-            if mods == 1: # equilibrium CDE
+            if self.mode in (1,3,5): # equilibrium CDE
                 c1 *= bmass
                 return c1, 0.0
             else :
@@ -278,7 +276,7 @@ class DetCDE:
                 if ttt <= 0:
                     return c1, c2
 
-                if mods == 1:
+                if self.mode in (1,3,5):
                     a1 = self.cc4(ttt, self.da)
                     a2 = 0.0
                 else:
@@ -298,7 +296,7 @@ class DetCDE:
             return c1, c2
         
         elif self.modb == 5: # Exponential input
-            if mods == 1:
+            if self.mode in (1,3,5):
                 a1 = self.cc4(self.tt, self.da)
                 a2 = 0.0
             else:
@@ -320,7 +318,7 @@ class DetCDE:
                 c2 += self.cpulse[1] * a2
                 return c1, c2
 
-            if mods == 1:
+            if self.mode in (1,3,5):
                 dum = -self.r * self.tpulse[0]
                 dum1 = 1.0 + 4.0 * (self.dmu1 + dum) / self.p
                 mc = 1
@@ -350,7 +348,7 @@ class DetCDE:
             if self.modc not in [3, 4] and self.zz < self.dzmin:
                 c1 = self.cinput(self.tt)
 
-            if mods == 1:
+            if self.mode in (1,3,5):
                 return c1, 0.0
             else :
                 c2 = chebycon(self.cbin2, 0.0, self.tt)
@@ -365,10 +363,9 @@ class DetCDE:
         """Initial value problem (IVP) for equilibrium and nonequilibrium CDE"""
         if self.modi == 0: # Zero initial concentration
             return 0.0, 0.0
-        mods = self.mode % 2
 
         mmodi = self.modi
-        if mmodi == 4 and self.cini[0]['conc'] > self.ctol:
+        if mmodi == 4 and self.cini[0] > self.ctol:
             mmodi = 1
         
         # Initial concentration for small T
@@ -376,23 +373,22 @@ class DetCDE:
             # stepwise initial distribution (modi = 0, 1, 2)
             # Zero initial distribution (modi = 0) and constant initial distribution (modi = 1) 
             # are special cases of stepwise initial distribution (modi = 2)
-            if mmodi in (0, 1, 2):
-                ## match model length zz with cloest zini
-                cini = min(self.cini, key=lambda cini: abs(cini['z'] - self.zz))
-                c1 = cini['conc']
-                c2 = cini['conc']
+            if mmodi in (1, 2):
+                i = np.argmin(abs(self.zini[i] - self.zz))
+                c1 = self.cini[i]
+                c2 = self.cini[i]
+                return c1, c2
             elif mmodi == 3: # exponential initial distribution
-                c1 = self.cini[0]['conc'] + self.cini[1]['conc'] * dbexp(-self.cini[0]['z'] * self.zz)
-                c2 = c1
+                c1 = self.cini[0] + self.cini[1] * dbexp(-self.zini[0] * self.zz)
+                return c1, c1
             elif mmodi == 4: # Dirac delta initial distribution
-                c1 = c2 = 0.0
+                return 0.0, 0.0
             else :
                 raise ValueError("ERROR! MODI SHOULD BE 0,1,2,3,4")
-            return c1, c2
             
         # prepare constants
         dg = dbexp(-(self.dmu1 + self.da) / self.betr * self.tt)
-        if mods == 1:
+        if self.mode in (1,3,5):
             a1 = 0.0
         else:
             mc = 1
@@ -410,39 +406,28 @@ class DetCDE:
         if mmodi in (1, 2): # stepwise initial distribution
             for i in range(self.nini):
                 if i == 0:
-                    conc0 = self.cini[i]['conc']
-                    g = -conc0 * dg * (mcc1 - 1.0)
+                    g = -self.cini[i] * dg * (mcc1 - 1.0)
                 else:
-                    conc0 = self.cini[i - 1]['conc']
-                    conc1 = self.cini[i]['conc']
-                    zini = self.cini[i]['z']
-                    mcc2 = self.cc2(self.tt, zini)
-                    g += (conc0 - conc1) * dg * (mcc2 - 1.0)
+                    mcc2 = self.cc2(self.tt, self.zini[i])
+                    g += (self.cini[i - 1] - self.cini[i]) * dg * (mcc2 - 1.0)
             c1 = g * dbexp(-self.a * self.tt) + a1
-            if mods == 0: # nonequilibrium CDE
-                zini = self.cini[self.nini-1]['z']
-                conc0 = self.cini[self.nini-1]['conc']
-                if self.nini == 1 or self.zz >= zini:
-                    c2 = conc0 * dbexp(-self.b * self.tt) + a2
-                else:
-                    for i in range(1,self.nini):
-                        zini0 = self.cini[i-1]['z']
-                        zini1 = self.cini[i]['z']
-                        if self.zz >= zini0 and self.zz < zini1:
-                            conc0 = self.cini[i-1]['conc']
-                            c2 = conc0 * dbexp(-self.b * self.tt) + a2
+            if self.mode in (2, 4, 6, 8): # nonequilibrium CDE
+                i = np.argmin(abs(self.zini[i] - self.zz))
+                c2 = self.cini[i] * dbexp(-self.b * self.tt) + a2
+            return c1, c2
         elif mmodi == 3: # exponential initial distribution
-            U1 = self.cini[0]['conc']
-            U2 = self.cini[1]['conc']
-            lamda = self.cini[0]['z']
+            U1 = self.cini[0]
+            U2 = self.cini[1]
+            lamda = self.zini[0]
             mcc3 = self.cc3(self.tt, lamda)
             c1 = (U1 * dg * (1.0 - mcc1) + U2  * dg * mcc3) * dbexp(-self.a * self.tt) + a1
-            if mods == 0:
+            if self.mode in (2, 4, 6, 8):
                 c2 = (U1 + U2 * dbexp(-lamda * self.zz)) * dbexp(-self.b * self.tt) + a2
+            return c1, c2
         elif mmodi == 4: # Dirac delta initial distribution
-            U1 = self.cini[0]['conc']
-            dmass = self.cini[1]['conc']
-            zini = self.cini[1]['z']
+            U1 = self.cini[0]
+            dmass = self.cini[1]
+            zini = self.zini[1]
             mcc5 = self.cc5(self.tt, zini)
             if self.nredu != 2:
                 dmass /= self.zl
@@ -454,12 +439,11 @@ class DetCDE:
             else :
                 g = dmass * dg * mcc5
             c1 += g * dbexp(-self.a * self.tt) + dmass * a1
-            if mods != 1 and self.mcon != 1:
+            if self.mode in (2, 4, 6, 8) :
                 c2 += dmass * a2
+            return c1, c2
         else :
             raise ValueError("ERROR! MODI SHOULD BE 0,1,2,3,4")
-
-        return c1, c2
         
     def produc(self):
         """Production value problem (PVP) for equilibrium and nonequilibrium CDE"""
@@ -475,17 +459,16 @@ class DetCDE:
         #             c1 = self.prod0(self.tt)
         #             return c1, c2
         #         else:
-        #             c1 = self.prodval1[0]['gamma'] / self.dmu1 * (1 - dbexp(-(self.dmu1 * self.tt) / self.betr) * (1 - self.cc1(self.tt)) - self.cc4(self.tt, self.da))
+        #             c1 = self.gamma1[0] / self.dmu1 * (1 - dbexp(-(self.dmu1 * self.tt) / self.betr) * (1 - self.cc1(self.tt)) - self.cc4(self.tt, self.da))
         #             return c1, c2
 
         # Eq.(2.33) or (2.34) (current setting)
         # c1 = chebycon(self.c1pro, 0.0, self.tt)
         
-        mods = self.mode % 2
         c1 = chebycon(self.c1pro, 0.0, self.tt)
         # c1, _ = quad(self.c1pro, 0.0, self.tt)
 
-        if mods == 1: # equilibrium CDE
+        if self.mode in (1, 3, 5): # equilibrium CDE
             return c1, 0.0
 
         # Nonequilibrium CDE phase2 concentration
@@ -494,21 +477,14 @@ class DetCDE:
         if omegamu2 < self.ctol:
             if self.modp in (0, 1, 2):
                 if self.npro2 == 1:
-                    gamma2 = self.prodval2[0]['gamma']
-                    c2 = gamma2 * tconv
+                    c2 = tconv * self.gamma2[0]
                     return c1, c2
                 else:
-                    prod = min(self.prodval2, key=lambda prod: abs(prod['zpro'] - self.zz))
-                    gamma2 = prod['gamma']
-                    c2 = gamma2 * tconv
+                    i = np.argmin(abs(self.zpro2[i] - self.zz))
+                    c2 = tconv * self.gamma2[i]
                     return c1, c2
             elif self.modp == 3:
-                gamma21 = self.prodval2[0]['gamma']
-                gamma22 = self.prodval2[1]['gamma']
-                zpro2 = self.prodval2[0]['zpro']
-                item1 = (gamma21 + gamma22 * dbexp(-zpro2 * self.zz))
-                item2 = tconv
-                c2 = item1 * item2
+                c2 = tconv * (self.gamma2[0] + self.gamma2[1] * dbexp(-self.zpro2[0] * self.zz))
                 return c1, c2
             else:
                 raise ValueError("ERROR! MODP SHOULD BE 0,1,2,3")
@@ -519,20 +495,15 @@ class DetCDE:
 
             if self.modp in (0, 1, 2):
                 if self.npro2 == 1:
-                    gamma2 = self.prodval2[0]['gamma']
+                    gamma2 = self.gamma2[0]
                     c2 = gamma2 / a3 + a2
                     return c1, c2
                 else:
-                    prod = min(self.prodval2, key=lambda prod: abs(prod['zpro'] - self.zz))
-                    gamma2 = prod['gamma']
-                    c2 = gamma2 / a3 + a2
+                    i = np.argmin(abs(self.zpro2[i] - self.zz))
+                    c2 = self.gamma2[i] / a3 + a2
                     return c1, c2
             elif self.modp == 3:
-                gamma21 = self.prodval2[0]['gamma']
-                gamma22 = self.prodval2[1]['gamma']
-                zpro2 = self.prodval2[0]['zpro']
-                gamma = gamma21 + gamma22 * dbexp(-zpro2 * self.zz)
-                c2 = gamma / a3 + a2
+                c2 = (self.gamma2[0] + self.gamma2[1] * dbexp(-self.zpro2[0] * self.zz)) / a3 + a2
                 return c1, c2
             else:
                 raise ValueError("ERROR! MODP SHOULD BE 0,1,2,3")
@@ -641,28 +612,22 @@ class DetCDE:
 
     def civp(self, tau, mc):
         """Calculate argument in initial value problem"""
-        # self.beta = self.betr / self.r
+        self.beta = self.betr / self.r
         dg = dbexp(-(self.dmu1 + self.da) / self.betr * tau)
 
         if self.modi in (1,2):
             for i in range(self.nini):
-                conc0 = self.cini[i-1]['conc']
-                conc1 = self.cini[i]['conc']
-                zini = self.cini[i]['z']
                 if i == 0:
-                    g = -conc1 * dg * (self.cc1(tau) - 1.0)
+                    g = -self.cini[i] * dg * (self.cc1(tau) - 1.0)
                 else:
-                    g += (conc0 - conc1) * dg * (self.cc2(tau, zini) - 1.0)
+                    g += (self.cini[i-1] - self.cini[i]) * dg * (self.cc2(tau, self.zini[i]) - 1.0)
         elif self.modi == 3:
-            conc0 = self.cini[0]['conc']
-            conc1 = self.cini[1]['conc']
-            zini = self.cini[0]['z']
-            g = conc0* dg * (1.0 - self.cc1(tau)) + conc1 * dg * self.cc3(tau, zini)
+            g = self.cini[0]* dg * (1.0 - self.cc1(tau)) + self.cini[1] * dg * self.cc3(tau, self.zini[0])
         elif self.modi == 4:
-            if self.modc <= 4 and abs(self.cini[1]['z']) < self.dzmin:
+            if self.modc <= 4 and abs(self.zini[1]) < self.dzmin:
                 g = dg * self.cc0(tau) * self.beta * self.r
             else:
-                g = dg * self.cc5(tau, self.cini[1]['z'])
+                g = dg * self.cc5(tau, self.zini[1])
 
         at = self.a * tau
         bt = self.b * (self.tt - tau)
@@ -733,20 +698,20 @@ class DetCDE:
                 return c2pro
             for i in range(self.npro1):
                 if i == 0:
-                    g = -self.prodval1[0]['gamma'] / self.betr * dg * (self.cc1(tau) - 1.0)
+                    g = -self.gamma1[0] / self.betr * dg * (self.cc1(tau) - 1.0)
                 else:
-                    g += (self.prodval1[i - 1]['gamma'] - self.prodval1[i]['gamma']) / self.betr * dg * (self.cc2(tau, self.prodval1[i]['zpro']) - 1.0)
+                    g += (self.gamma1[i - 1] - self.gamma1[i]) / self.betr * dg * (self.cc2(tau, self.zpro1[i]) - 1.0)
             if self.npro2 == 0:
                 return c2pro
             for i in range(self.npro2):
                 if i == 0:
-                    h = -self.cx * self.prodval2[0] / self.betr * dg * (self.cc1(tau) - 1.0)
+                    h = -self.cx * self.gamma2[0] / self.betr * dg * (self.cc1(tau) - 1.0)
                 else:
-                    h += self.cx * (self.prodval2[i - 1] - self.prodval2[i]) / self.betr * dg * (self.cc2(tau, self.prodval2[i]['zpro']) - 1.0)
+                    h += self.cx * (self.gamma2[i - 1] - self.gamma2[i]) / self.betr * dg * (self.cc2(tau, self.zpro2[i]) - 1.0)
             g += h
         elif self.modp == 2:
-            g = (self.prodval1[0]['gamma'] * (1.0 - self.cc1(tau)) + self.prodval1[1]['gamma'] * self.cc3(tau, self.prodval1[0]['zpro'])) * dg / self.betr
-            h = (self.prodval2[0]['gamma'] * (1.0 - self.cc1(tau)) + self.prodval2[1]['gamma'] * self.cc3(tau, self.prodval2[0]['zpro'])) * dg / self.betr * self.cx
+            g = (self.gamma1[0] * (1.0 - self.cc1(tau)) + self.gamma1[1] * self.cc3(tau, self.zpro1[0])) * dg / self.betr
+            h = (self.gamma2[0] * (1.0 - self.cc1(tau)) + self.gamma2[1] * self.cc3(tau, self.zpro2[0])) * dg / self.betr * self.cx
             g += h
 
         if g < self.ctol:
