@@ -463,8 +463,7 @@ class DetCDE:
         #             return c1, c2
 
         # Eq.(2.33) or (2.34) (current setting)
-        # c1 = chebycon(self.c1pro, 0.0, self.tt)
-        
+      
         c1 = chebycon(self.c1pro, 0.0, self.tt)
         # c1, _ = quad(self.c1pro, 0.0, self.tt)
 
@@ -475,38 +474,29 @@ class DetCDE:
         omegamu2 = self.omega + self.dmu2
         tconv = self.tt / (self.r - self.betr)
         if omegamu2 < self.ctol:
-            if self.modp in (0, 1, 2):
-                if self.npro2 == 1:
-                    c2 = tconv * self.gamma2[0]
-                    return c1, c2
-                else:
-                    i = np.argmin(abs(self.zpro2[i] - self.zz))
-                    c2 = tconv * self.gamma2[i]
-                    return c1, c2
+            if self.modp in (1, 2):
+                i = np.argmin(abs(self.zpro2[i] - self.zz))
+                c2 = tconv * self.gamma2[i]
+                return c1, c2
             elif self.modp == 3:
                 c2 = tconv * (self.gamma2[0] + self.gamma2[1] * dbexp(-self.zpro2[0] * self.zz))
                 return c1, c2
             else:
-                raise ValueError("ERROR! MODP SHOULD BE 0,1,2,3")
+                raise ValueError("ERROR! MODP SHOULD BE 1,2,3")
         else:
             a2 = chebycon(self.c2pro, 0.0, self.tt)
             # a2, _ = quad(self.c2pro, 0.0, self.tt)
             a3 = omegamu2 * (1.0 - dbexp(-omegamu2 * tconv))
 
-            if self.modp in (0, 1, 2):
-                if self.npro2 == 1:
-                    gamma2 = self.gamma2[0]
-                    c2 = gamma2 / a3 + a2
-                    return c1, c2
-                else:
-                    i = np.argmin(abs(self.zpro2[i] - self.zz))
-                    c2 = self.gamma2[i] / a3 + a2
-                    return c1, c2
+            if self.modp in (1, 2):
+                i = np.argmin(abs(self.zpro2[i] - self.zz))
+                c2 = self.gamma2[i] / a3 + a2
+                return c1, c2
             elif self.modp == 3:
                 c2 = (self.gamma2[0] + self.gamma2[1] * dbexp(-self.zpro2[0] * self.zz)) / a3 + a2
                 return c1, c2
             else:
-                raise ValueError("ERROR! MODP SHOULD BE 0,1,2,3")
+                raise ValueError("ERROR! MODP SHOULD BE 1,2,3")
 
     def ctran(self, tau, mc):
         """Calculate argument in integral for delta input (transfer function model)"""
@@ -616,11 +606,9 @@ class DetCDE:
         dg = dbexp(-(self.dmu1 + self.da) / self.betr * tau)
 
         if self.modi in (1,2):
-            for i in range(self.nini):
-                if i == 0:
-                    g = -self.cini[i] * dg * (self.cc1(tau) - 1.0)
-                else:
-                    g += (self.cini[i-1] - self.cini[i]) * dg * (self.cc2(tau, self.zini[i]) - 1.0)
+            g = -self.cini[0] * dg * (self.cc1(tau) - 1.0)
+            for i in range(self.nini-1):
+                g += (self.cini[i] - self.cini[i+1]) * dg * (self.cc2(tau, self.zini[i+1]) - 1.0)
         elif self.modi == 3:
             g = self.cini[0]* dg * (1.0 - self.cc1(tau)) + self.cini[1] * dg * self.cc3(tau, self.zini[0])
         elif self.modi == 4:
@@ -646,39 +634,31 @@ class DetCDE:
 
     def c1pro(self, tau):
         """Calculate argument in production term for equilibrium concentration"""
-        mods = self.mode % 2
         dg = dbexp(-(self.dmu1 + self.da) / self.betr * tau)
         gcc1 = self.cc1(tau)
         if self.modp in (1,2):
             if self.npro1 > 0:
-                for i in range(self.npro1):
-                    if i == 0:
-                        g = -self.gamma1[0] / self.betr * dg * (gcc1 - 1.0)
-                    else:
-                        gcc2 = self.cc2(tau, self.zpro1[i])
-                        g += (self.gamma1[i - 1] - self.gamma1[i]) / self.betr * dg * (gcc2 -1.0) 
-            if mods == 0 and self.npro2 > 0:
-                for i in range(self.npro2):
-                    if i == 0:
-                        h = -self.cx * self.gamma2[0]/ self.betr * dg * (gcc1 - 1.0)
-                    else:
-                        gcc2 = self.cc2(tau, self.zpro2[i])
-                        h += self.cx * (self.gamma2[i - 1] - self.gamma2[i]) / self.betr * dg * (gcc2 - 1.0)
-                    g += h
+                g = -self.gamma1[0] / self.betr * dg * (gcc1 - 1.0)
+                for i in range(self.npro1-1):
+                    gcc2 = self.cc2(tau, self.zpro1[i+1])
+                    g += (self.gamma1[i] - self.gamma1[i+1]) / self.betr * dg * (gcc2 -1.0) 
+            if self.mode in (2,4,6,8) and self.npro2 > 0:
+                h = -self.cx * self.gamma2[0]/ self.betr * dg * (gcc1 - 1.0)
+                for i in range(self.npro2-1):
+                    gcc2 = self.cc2(tau, self.zpro2[i+1])
+                    h += self.cx * (self.gamma2[i] - self.gamma2[i+1]) / self.betr * dg * (gcc2 - 1.0)
+                g += h
         elif self.modp == 3:
             gcc3 = self.cc3(tau, self.zpro1[0])
             g = (self.gamma1[0] * (1.0 - gcc1) + self.gamma1[1] * gcc3) * dg / self.betr
-            if mods == 0:
+            if self.mode in (2,4,6,8):
                 gcc3 = self.cc3(tau, self.zpro2[0])
                 h = (self.gamma2[0] * (1.0 - gcc1) + self.gamma2[1] * gcc3) * dg / self.betr * self.cx
                 g += h
         else :
             raise ValueError("ERROR! MODP SHOULD BE 0,1,2,3")
 
-        if g < self.ctol:
-            return 0.0
-
-        if mods == 1:
+        if self.mode in (1,3,5):
             return g
         else :
             at = self.a * tau
@@ -688,61 +668,46 @@ class DetCDE:
 
     def c2pro(self, tau):
         """Calculate argument in production term for nonequilibrium concentration"""
-        c2pro = 0.0
-        g = 0.0
-        h = 0.0
         dg = dbexp(-(self.dmu1 + self.da) / self.betr * tau)
+        gcc1 = self.cc1(tau)
 
         if self.modp == 1:
             if self.npro1 == 0:
-                return c2pro
-            for i in range(self.npro1):
-                if i == 0:
-                    g = -self.gamma1[0] / self.betr * dg * (self.cc1(tau) - 1.0)
-                else:
-                    g += (self.gamma1[i - 1] - self.gamma1[i]) / self.betr * dg * (self.cc2(tau, self.zpro1[i]) - 1.0)
+                return 0.0
+            g = -self.gamma1[0] / self.betr * dg * (gcc1 - 1.0)
+            for i in range(self.npro1-1):
+                g += (self.gamma1[i] - self.gamma1[i+1]) / self.betr * dg * (self.cc2(tau, self.zpro1[i+1]) - 1.0)
             if self.npro2 == 0:
-                return c2pro
-            for i in range(self.npro2):
-                if i == 0:
-                    h = -self.cx * self.gamma2[0] / self.betr * dg * (self.cc1(tau) - 1.0)
-                else:
-                    h += self.cx * (self.gamma2[i - 1] - self.gamma2[i]) / self.betr * dg * (self.cc2(tau, self.zpro2[i]) - 1.0)
+                return 0.0
+            h = -self.cx * self.gamma2[0] / self.betr * dg * (gcc1 - 1.0)
+            for i in range(self.npro2-1):
+                h += self.cx * (self.gamma2[i] - self.gamma2[i+1]) / self.betr * dg * (self.cc2(tau, self.zpro2[i+1]) - 1.0)
             g += h
         elif self.modp == 2:
-            g = (self.gamma1[0] * (1.0 - self.cc1(tau)) + self.gamma1[1] * self.cc3(tau, self.zpro1[0])) * dg / self.betr
-            h = (self.gamma2[0] * (1.0 - self.cc1(tau)) + self.gamma2[1] * self.cc3(tau, self.zpro2[0])) * dg / self.betr * self.cx
+            g = (self.gamma1[0] * (1.0 - gcc1) + self.gamma1[1] * self.cc3(tau, self.zpro1[0])) * dg / self.betr
+            h = (self.gamma2[0] * (1.0 - gcc1) + self.gamma2[1] * self.cc3(tau, self.zpro2[0])) * dg / self.betr * self.cx
             g += h
-
-        if g < self.ctol:
-            return c2pro
 
         at = self.a * tau
         bt = self.b * (self.tt - tau)
         self.beta = self.betr / self.r
         xii = 2.0 * np.sqrt(at * bt)
         cbi1 = np.sqrt(self.beta / (1 - self.beta) * (self.tt - tau) / tau)
-        c2pro = self.cx * g * (1.0 - gold(bt, at)) - cbi1 * h * expbi1(xii, -at - bt)
 
-        return c2pro
+        return self.cx * g * (1.0 - gold(bt, at)) - cbi1 * h * expbi1(xii, -at - bt)
 
     def cc0(self, tau):
         """Calculate solutions for delta input travel time distribution for equilibrium CDE"""
         dg = dbexp(-self.dmu1 / self.betr * tau)
         g1 = dbexp(self.p * (self.betr * self.zz - tau) * (tau - self.betr * self.zz) / (4.0 * self.betr * tau))
-        # print(tau, self.zz, self.p, self.betr,  self.dmu1)
         
         if self.modc in (3, 4):  # third-type concentration
             g2 = np.sqrt(self.p / (self.betr * tau))
             gexf = exf(self.p * self.zz, g2 / 2.0 * (self.betr * self.zz + tau))
-            gcc0 = dg * (0.56419 * g2 * g1 - self.p / (2.0 * self.betr) *  gexf)
-            # print(tau, dg, g1, g2, gexf, gcc0)
+            return dg * (0.56419 * g2 * g1 - self.p / (2.0 * self.betr) *  gexf)
         else:
             g2 = np.sqrt(self.p * self.betr / (4.0 * np.pi * tau))
-            gcc0 = dg * (self.zz / tau) * g2 * g1
-            # print(tau, dg, g1, g2, gcc0)
-        
-        return gcc0
+            return dg * (self.zz / tau) * g2 * g1
         
     def cc1(self, tau):
         """Calculate equilibrium solutions for step input"""
@@ -789,11 +754,11 @@ class DetCDE:
         g1 = exf(0.0, rba * (self.betr * self.zz - (1.0 + 2.0 * z1 / self.p) * tau))
         g2 = exf(self.p * self.zz + 2.0 * z1 * self.zz, rba * (self.betr * self.zz + (1.0 + 2.0 * z1 / self.p) * tau))
         
-        if self.modc in (3, 4):  # third-type concentration
+        if self.modc in (1, 2): # flux concentration
+            return (1.0 + z1 / self.p) * a1 * (2.0 - g1 - g2) / 2.0
+        elif self.modc in (3, 4):  # third-type concentration
             g3 = exf(self.p * self.zz, rba * (self.betr * self.zz + tau))
             return a1 * (1.0 - g1 / 2.0 + (1 + self.p / z1) * g2 / 2.0) - self.p / z1 / 2.0 * g3
-        elif self.modc in (1, 2): # flux concentration
-            return (1.0 + z1 / self.p) * a1 * (2.0 - g1 - g2) / 2.0
         elif self.modc in (5, 6): # first-type concentration
             return a1 * (2.0 - g1 - g2) / 2.0
         else:
@@ -835,16 +800,18 @@ class DetCDE:
         g1 = dbexp(-bb * (self.betr * (z1 - self.zz) + tau) * (self.betr * (z1 - self.zz) + tau))
         g2 = dbexp(self.p * self.zz - bb * (self.betr * (z1 + self.zz) + tau) * (self.betr * (z1 + self.zz) + tau))
         
-        if self.modc in (3, 4): # third-type concentration
+        if self.modc in (1, 2): # flux concentration
+            bc = 1.0 - (self.betr * (z1 - self.zz) * tau) / 2.0 / tau
+            bd = 1.0 - (self.betr * (z1 + self.zz) * tau) / 2.0 / tau
+            return (bc * g1 - bd * g2) * rba
+        elif self.modc in (3, 4): # third-type concentration
             rbb = np.sqrt(bb)
             g3 = exf(self.p * self.zz, rbb * (self.betr * (z1 + self.zz) + tau))
             return (g1 + g2) * rba - self.p / 2.0 * g3
         elif self.modc in (5, 6): # first-type concentration
             return (g1 - g2) * rba
         else:
-            bc = 1.0 - (self.betr * (z1 - self.zz) * tau) / 2.0 / tau
-            bd = 1.0 - (self.betr * (z1 + self.zz) * tau) / 2.0 / tau
-            return (bc * g1 - bd * g2) * rba
+            raise ValueError("ERROR! MODC SHOULD BE 1,2,3,4,5,6")
 
     def prod0(self, tau):
         """Calculate analytical solutions of constant production term for equilibrium CDE in case of dmu1=0"""
