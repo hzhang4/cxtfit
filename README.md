@@ -20,5 +20,5 @@ To install the CXTFIT Python package, follow these steps:
     ```
 3. Install the package:
     ```bash
-    python install .
+    pip install .
     ```
