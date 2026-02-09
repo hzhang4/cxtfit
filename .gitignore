@@ -1,4 +1,5 @@
 # Byte-compiled / optimized / DLL files
+# Python bytecode
 __pycache__/
 *.py[cod]
 *$py.class
@@ -11,6 +12,12 @@ build/
 # Virtual environments
 venv/
 .venv/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+ENV/
 
 # IDE
 .idea/
@@ -19,3 +26,12 @@ venv/
 
 # pytest
 .pytest_cache/
+*.swo
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
