@@ -475,7 +475,7 @@ class DetCDE:
         tconv = self.tt / (self.r - self.betr)
         if omegamu2 < self.ctol:
             if self.modp in (1, 2):
-                i = np.argmin(abs(self.zpro2[i] - self.zz))
+                i = np.argmin(np.abs(np.array(self.zpro2) - self.zz))
                 c2 = tconv * self.gamma2[i]
                 return c1, c2
             elif self.modp == 3:
@@ -489,7 +489,7 @@ class DetCDE:
             a3 = omegamu2 * (1.0 - dbexp(-omegamu2 * tconv))
 
             if self.modp in (1, 2):
-                i = np.argmin(abs(self.zpro2[i] - self.zz))
+                i = np.argmin(np.abs(np.array(self.zpro2) - self.zz))
                 c2 = self.gamma2[i] / a3 + a2
                 return c1, c2
             elif self.modp == 3:
