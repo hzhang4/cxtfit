@@ -1,8 +1,9 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+from functools import lru_cache
 
-from scipy.optimize import least_squares
+from scipy.optimize import least_squares, leastsq
 import scipy.stats as stats
 
 from .stocde import StoCDE, limit
@@ -314,50 +315,152 @@ class CXTsim(StoCDE):
         if verbose:
             print(self.cxtdata)
 
-    def residuals(self,params):
-        """Residuals function for least squares optimization""" 
-        cpar = self.full_parms(params) 
-        # print(f"Parameters estimates \n {cpar}")
-        csim,_,_,_ = self.model(cpar)
-
+    def residuals(self, params):
+        """Residuals function for least squares optimization"""
+        cpar = self.full_parms(params)
+        csim, _, _, _ = self.model(cpar)
         return csim - self.cobs
-    
-    # Replaced the curve fitting algorithm in the original fortran code with 
-    # the scipy.optimize.leastsq function to fit model to data
-    def curvefit(self,verbose=False):
-        """ Curve fitting using least squares optimization """
-        if 'cobs' in self.cxtdata.columns:
-            self.cobs = self.cxtdata['cobs'].values
-            if self.nfit > self.nob:
-                raise ValueError(f"Number of parameters to fit {self.nfit} exceeds number of observations {self.nob}")
-        else:
+
+    def residuals_scaled(self, params_scaled):
+        """Residuals with scaled parameters for better conditioning"""
+        params = params_scaled * self._param_scale
+        return self.residuals(params)
+
+    def curvefit(self, verbose=False, method='auto', ftol=1e-8, xtol=1e-8,
+                 gtol=1e-8, max_nfev=None, diff_step=None, x_scale='jac'):
+        """
+        Optimized curve fitting using least squares optimization.
+
+        Parameters
+        ----------
+        verbose : bool, default=False
+            Print detailed optimization progress
+        method : str, default='auto'
+            Optimization algorithm: 'auto', 'trf', 'dogbox', or 'lm'
+            - 'auto': Selects best method based on problem (lm if no bounds, trf otherwise)
+            - 'lm': Levenberg-Marquardt (fastest, but no bounds support)
+            - 'trf': Trust Region Reflective (handles bounds well)
+            - 'dogbox': Dogleg with rectangular trust regions (good for small residuals)
+        ftol : float, default=1e-8
+            Tolerance for termination by change of cost function
+        xtol : float, default=1e-8
+            Tolerance for termination by change of independent variables
+        gtol : float, default=1e-8
+            Tolerance for termination by norm of gradient
+        max_nfev : int, optional
+            Maximum number of function evaluations. Default: 100 * nfit
+        diff_step : float, optional
+            Relative step size for finite difference Jacobian. Default: adaptive
+        x_scale : str or array_like, default='jac'
+            Characteristic scale of variables. 'jac' uses Jacobian-based scaling.
+
+        Returns
+        -------
+        None
+            Results stored in self.bfinal and self.cxtdata
+        """
+        # Validate observed data
+        if 'cobs' not in self.cxtdata.columns:
             raise ValueError("Observed data 'cobs' not found in the input dataframe.")
-        
-        initial_guess = [self.binit[key] for key, flag in self.bfit.items() if flag == 1]
+
+        self.cobs = self.cxtdata['cobs'].values
+        if self.nfit > self.nob:
+            raise ValueError(f"Number of parameters to fit {self.nfit} exceeds number of observations {self.nob}")
+
+        # Extract initial guess and parameter keys
+        self._fit_keys = [key for key, flag in self.bfit.items() if flag == 1]
+        initial_guess = np.array([self.binit[key] for key in self._fit_keys])
+
         if verbose:
-            print(f"Initial parameters estimates \n {self.parms}")
-        
-        if self.ilmt : # Use bounds
+            print(f"Initial parameter estimates:\n{dict(zip(self._fit_keys, initial_guess))}")
+
+        # Set default max function evaluations based on problem size
+        if max_nfev is None:
+            max_nfev = max(100 * self.nfit, 1000)
+
+        # Adaptive diff_step based on parameter magnitudes
+        if diff_step is None:
+            # Use relative step that scales with parameter values
+            diff_step = np.maximum(1e-8, 1e-4 * np.abs(initial_guess))
+            diff_step = np.where(initial_guess == 0, 1e-6, diff_step)
+
+        # Setup bounds if specified
+        bounds = (-np.inf, np.inf)
+        if self.ilmt:
             bmax = self.parms.loc['bmax'].to_dict()
             bmin = self.parms.loc['bmin'].to_dict()
-            lower_bounds = [bmin[key] for key, flag in self.bfit.items() if flag == 1]
-            upper_bounds = [bmax[key] for key, flag in self.bfit.items() if flag == 1]
+            lower_bounds = np.array([bmin[key] for key in self._fit_keys])
+            upper_bounds = np.array([bmax[key] for key in self._fit_keys])
+            bounds = (lower_bounds, upper_bounds)
 
-            # Perform the least squares optimization, default setting works great
-            leastsq = least_squares(self.residuals, initial_guess, 
-                                        bounds=(lower_bounds, upper_bounds), diff_step=1e-3, verbose=verbose)
+            # Ensure initial guess is within bounds
+            initial_guess = np.clip(initial_guess, lower_bounds + 1e-10, upper_bounds - 1e-10)
+
+        # Select optimization method
+        if method == 'auto':
+            if self.ilmt:
+                # Use TRF for bounded problems - it's robust and efficient
+                method = 'trf'
+            else:
+                # Use LM for unbounded - it's fastest for well-conditioned problems
+                method = 'lm'
+
+        # Configure solver based on method
+        solver_kwargs = {
+            'fun': self.residuals,
+            'x0': initial_guess,
+            'method': method,
+            'ftol': ftol,
+            'xtol': xtol,
+            'gtol': gtol,
+            'max_nfev': max_nfev,
+            'verbose': 2 if verbose else 0,
+        }
+
+        # Method-specific options
+        if method == 'lm':
+            # Levenberg-Marquardt doesn't support bounds or x_scale
+            solver_kwargs['diff_step'] = diff_step if np.isscalar(diff_step) else np.mean(diff_step)
         else:
-            leastsq = least_squares(self.residuals, initial_guess, diff_step=1e-3, verbose=verbose)
+            # TRF and dogbox support bounds and scaling
+            solver_kwargs['bounds'] = bounds
+            solver_kwargs['x_scale'] = x_scale
+            solver_kwargs['diff_step'] = diff_step
 
-        self.bfinal = self.full_parms(leastsq.x)
+        # Run optimization
+        result = least_squares(**solver_kwargs)
+
+        # Store results
+        self._opt_result = result
+        self.bfinal = self.full_parms(result.x)
+
         if verbose:
-            print(f"Final parameters \n {self.bfinal}")
+            self._print_optimization_summary(result)
 
-        if verbose:
-            self.fit_stats(leastsq)
-
+        # Compute final forward solution
         self.direct(self.bfinal, verbose=verbose)
-        return
+
+    def _print_optimization_summary(self, result):
+        """Print summary of optimization results"""
+        print("\n" + "="*60)
+        print("OPTIMIZATION SUMMARY")
+        print("="*60)
+        print(f"Status: {'Converged' if result.success else 'Did not converge'}")
+        print(f"Message: {result.message}")
+        print(f"Function evaluations: {result.nfev}")
+        print(f"Jacobian evaluations: {getattr(result, 'njev', 'N/A')}")
+        print(f"Final cost: {result.cost:.6e}")
+        print(f"Optimality: {result.optimality:.6e}")
+        print("\nFinal parameters:")
+        for key, val in self.bfinal.items():
+            if key in self._fit_keys:
+                print(f"  {key}: {val:.6g} (fitted)")
+            else:
+                print(f"  {key}: {val:.6g} (fixed)")
+        print("="*60 + "\n")
+
+        # Print detailed statistics
+        self.fit_stats(result)
     
     def full_parms(self, params):
         cpar = self.binit.copy()
@@ -440,54 +543,66 @@ class CXTsim(StoCDE):
         print(f"{self.stats_dict}")
 
     # Converted from DIRECT and MODEL function in MODEL.FOR original Fortran code
-    def model(self,simparms):
-        """CXT computation with the given parameters"""
+    def model(self, simparms):
+        """CXT computation with the given parameters.
+
+        Optimized version using numpy arrays and precomputed coordinates.
+        """
         self.init_parms(simparms)
 
-        # Loop over data points
-        csim1=[0.0]*self.nob
-        csim2=[0.0]*self.nob
-        cvar1=[0.0]*self.nob
-        cvar2=[0.0]*self.nob
-        for i,rec in self.cxtdata.iterrows():
-            if self.nredu in (0,1): # DIMENSIONLESS Time
-                self.tt = rec['t'] * self.v / self.zl
-            else :
-                self.tt = rec['t']
+        # Pre-extract arrays for faster access (avoid repeated DataFrame lookups)
+        t_raw = self.cxtdata['t'].values
+        z_raw = self.cxtdata['z'].values
 
-            if self.nredu in (0,1,3): # DIMENSIONLESS Distance
-                self.zz = rec['z'] / self.zl
-            else :
-                self.zz = rec['z']
+        # Precompute dimensionless coordinates based on nredu flag
+        if self.nredu in (0, 1):  # DIMENSIONLESS Time
+            t_arr = t_raw * self.v / self.zl
+        else:
+            t_arr = t_raw
 
-            if self.mode ==1:
-                c1,c2 = self.DetCDE()
-                if c1 > self.ctol: csim1[i]=c1 
-            elif self.mode==2:
-                c1,c2 = self.DetCDE()
-                if self.inverse == 1 and (self.modc == 4 or self.modc == 6):
+        if self.nredu in (0, 1, 3):  # DIMENSIONLESS Distance
+            z_arr = z_raw / self.zl
+        else:
+            z_arr = z_raw
+
+        # Use numpy arrays for results (faster than lists)
+        csim1 = np.zeros(self.nob)
+        csim2 = np.zeros(self.nob)
+        cvar1 = np.zeros(self.nob)
+        cvar2 = np.zeros(self.nob)
+
+        # Precompute scaling factors for mode 2 if needed
+        mode2_scale = (self.mode == 2 and self.inverse == 1 and
+                       self.modc in (4, 6))
+
+        # Main computation loop
+        for i in range(self.nob):
+            self.tt = t_arr[i]
+            self.zz = z_arr[i]
+
+            if self.mode == 1:
+                c1, c2 = self.DetCDE()
+                if c1 > self.ctol:
+                    csim1[i] = c1
+            elif self.mode == 2:
+                c1, c2 = self.DetCDE()
+                if mode2_scale:
                     c1 = self.beta * self.r * c1
                     c2 = (1 - self.beta) * self.r * c2
-                if c1 > self.ctol: csim1[i]=c1 
-                if c2 > self.ctol: csim2[i]=c2 
+                if c1 > self.ctol:
+                    csim1[i] = c1
+                if c2 > self.ctol:
+                    csim2[i] = c2
             else:
-                # print(f"V={self.v}, D={self.d}, R={self.r}, P={self.p}, Mu1={self.dmu1}, Mu2={self.dmu2}, Beta={self.beta}, Omega={self.omega}")
-                # print(f"Gamma1={self.gamma1}, Gamma2={self.gamma2}, Y={self.y}, Corr={self.corr}, Alpha={self.alpha}")
-                # print(f"SDlnV={self.sdlnv}, SDlnD={self.sdln_d}, SDlnK={self.sdlnk}")
-                # print(f'MSTOCH={self.mstoch}, MCORR={self.mcorr}, MODD={self.modd}, MD56={self.md56}, MODK={self.modk}, MK34={self.mk34}, MAL8={self.mal8}')
-                # print(f"cpulse={self.cpulse}, tpulse={self.tpulse}")
-                c1,c2,v1,v2 = self.StoCDE()
-                csim1[i]=c1 
-                cvar1[i]=v1 
-                # if c1 > self.ctol: csim1[i]=c1 
-                # if v1 > self.ctol: cvar1[i]=v1 
-                if self.mode in (4,6,8):
-                    csim2[i]=c2 
-                    cvar2[i]=v2
-                    # if c2 > self.ctol: csim2[i]=c2 
-                    # if v2 > self.ctol: cvar2[i]=v2 
+                # Stochastic modes (3, 4, 5, 6, 8)
+                c1, c2, v1, v2 = self.StoCDE()
+                csim1[i] = c1
+                cvar1[i] = v1
+                if self.mode in (4, 6, 8):
+                    csim2[i] = c2
+                    cvar2[i] = v2
 
-        return csim1,csim2,cvar1,cvar2
+        return csim1, csim2, cvar1, cvar2
 
     def init_parms(self,simparms):
         """Initialize model parameters before computation"""
