@@ -687,6 +687,15 @@ class DetCDE:
             g = (self.gamma1[0] * (1.0 - gcc1) + self.gamma1[1] * self.cc3(tau, self.zpro1[0])) * dg / self.betr
             h = (self.gamma2[0] * (1.0 - gcc1) + self.gamma2[1] * self.cc3(tau, self.zpro2[0])) * dg / self.betr * self.cx
             g += h
+        elif self.modp == 3:
+            # Exponential production: gamma = gamma0 + gamma1 * exp(-zpro * z)
+            gcc3_1 = self.cc3(tau, self.zpro1[0])
+            g = (self.gamma1[0] * (1.0 - gcc1) + self.gamma1[1] * gcc3_1) * dg / self.betr
+            gcc3_2 = self.cc3(tau, self.zpro2[0])
+            h = (self.gamma2[0] * (1.0 - gcc1) + self.gamma2[1] * gcc3_2) * dg / self.betr * self.cx
+            g += h
+        else:
+            raise ValueError("ERROR! MODP SHOULD BE 0,1,2,3")
 
         at = self.a * tau
         bt = self.b * (self.tt - tau)
@@ -750,10 +759,29 @@ class DetCDE:
         """Calculate argument for exponential initial and production profiles"""
         ba = self.p / (4.0 * self.betr * tau)
         rba = np.sqrt(ba)
+
+        # Handle z1=0 case to avoid division by zero
+        if abs(z1) < self.ctol:
+            # When z1=0, the exponential decay rate is zero (constant production)
+            # Simplified expressions for z1->0 limit
+            a1 = 1.0  # dbexp(0) = 1
+            g1 = exf(0.0, rba * (self.betr * self.zz - tau))
+            g2 = exf(self.p * self.zz, rba * (self.betr * self.zz + tau))
+
+            if self.modc in (1, 2):  # flux concentration
+                return a1 * (2.0 - g1 - g2) / 2.0
+            elif self.modc in (3, 4):  # third-type concentration
+                g3 = exf(self.p * self.zz, rba * (self.betr * self.zz + tau))
+                return a1 * (1.0 - g1 / 2.0 + g2 / 2.0) - g3 / 2.0
+            elif self.modc in (5, 6):  # first-type concentration
+                return a1 * (2.0 - g1 - g2) / 2.0
+            else:
+                raise ValueError("ERROR! MODC SHOULD BE 1,2,3,4,5,6")
+
         a1 = dbexp(z1 * z1 * tau / self.betr / self.p + z1 * tau / self.betr - z1 * self.zz)
         g1 = exf(0.0, rba * (self.betr * self.zz - (1.0 + 2.0 * z1 / self.p) * tau))
         g2 = exf(self.p * self.zz + 2.0 * z1 * self.zz, rba * (self.betr * self.zz + (1.0 + 2.0 * z1 / self.p) * tau))
-        
+
         if self.modc in (1, 2): # flux concentration
             return (1.0 + z1 / self.p) * a1 * (2.0 - g1 - g2) / 2.0
         elif self.modc in (3, 4):  # third-type concentration

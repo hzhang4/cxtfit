@@ -242,7 +242,6 @@ class TestModp2StepwiseProduction:
 
         assert sim.cxtdata['csim'].notna().all()
 
-    @pytest.mark.xfail(reason="Bug in detcde.py cc3(): division by zero when zpro=0")
     def test_stepwise_production_nonequilibrium(self, profile_obsdata):
         """Test stepwise production with nonequilibrium model."""
         bname = ['V', 'D', 'R', 'beta', 'omega', 'mu1', 'mu2']
@@ -343,7 +342,6 @@ class TestModp3ExponentialProduction:
         # Concentration profile should exist
         assert sim.cxtdata['csim'].max() > 0
 
-    @pytest.mark.xfail(reason="Bug in detcde.py c2pro(): unbound variable 'g' in modp=3 path")
     def test_exponential_production_nonequilibrium(self, profile_obsdata):
         """Test exponential production with nonequilibrium model."""
         bname = ['V', 'D', 'R', 'beta', 'omega', 'mu1', 'mu2']
